@@ -1,0 +1,5 @@
+smbus2>=0.4
+PyYAML>=6.0
+RPi.GPIO>=0.7
+rich>=13.0
+click>=8.0

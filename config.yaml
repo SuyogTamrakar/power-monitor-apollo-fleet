@@ -1,0 +1,99 @@
+sampling_interval_s: 10
+shunt_ohms: 0.015
+max_expected_amps: 2.0
+log_dir: "./logs"
+log_rotate_days: 1
+
+alert:
+  enabled: true
+  window_hours: 2
+  threshold_ma: 5.0
+  gpio_pin: null   # Set to BCM pin number (e.g. 17) to enable GPIO output; null disables
+  cooldown_minutes: 30
+
+git:
+  auto_commit: true
+  commit_interval_s: 0   # 0 = rotation only; e.g. 3600 = hourly
+  remote: "origin"
+
+sensors:
+  - id: 1
+    mux_address: "0x70"
+    mux_channel: 0
+    enabled: true
+    label: "DUT-A1"
+  - id: 2
+    mux_address: "0x70"
+    mux_channel: 1
+    enabled: true
+    label: "DUT-A2"
+  - id: 3
+    mux_address: "0x70"
+    mux_channel: 2
+    enabled: true
+    label: "DUT-A3"
+  - id: 4
+    mux_address: "0x70"
+    mux_channel: 3
+    enabled: true
+    label: "DUT-A4"
+  - id: 5
+    mux_address: "0x70"
+    mux_channel: 4
+    enabled: false
+    label: "DUT-A5"
+  - id: 6
+    mux_address: "0x70"
+    mux_channel: 5
+    enabled: false
+    label: "DUT-A6"
+  - id: 7
+    mux_address: "0x70"
+    mux_channel: 6
+    enabled: false
+    label: "DUT-A7"
+  - id: 8
+    mux_address: "0x70"
+    mux_channel: 7
+    enabled: false
+    label: "DUT-A8"
+  - id: 9
+    mux_address: "0x71"
+    mux_channel: 0
+    enabled: false
+    label: "DUT-B1"
+  - id: 10
+    mux_address: "0x71"
+    mux_channel: 1
+    enabled: false
+    label: "DUT-B2"
+  - id: 11
+    mux_address: "0x71"
+    mux_channel: 2
+    enabled: false
+    label: "DUT-B3"
+  - id: 12
+    mux_address: "0x71"
+    mux_channel: 3
+    enabled: false
+    label: "DUT-B4"
+  - id: 13
+    mux_address: "0x71"
+    mux_channel: 4
+    enabled: false
+    label: "DUT-B5"
+  - id: 14
+    mux_address: "0x71"
+    mux_channel: 5
+    enabled: false
+    label: "DUT-B6"
+  - id: 15
+    mux_address: "0x71"
+    mux_channel: 6
+    enabled: false
+    label: "DUT-B7"
+  - id: 16
+    mux_address: "0x71"
+    mux_channel: 7
+    enabled: false
+    label: "DUT-B8"

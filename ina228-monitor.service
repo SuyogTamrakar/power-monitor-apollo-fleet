@@ -1,0 +1,18 @@
+[Unit]
+Description=INA228 Multi-Channel Current Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/ina228-monitor
+ExecStart=/usr/bin/python3 /home/pi/ina228-monitor/monitor.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ina228-monitor
+
+[Install]
+WantedBy=multi-user.target
