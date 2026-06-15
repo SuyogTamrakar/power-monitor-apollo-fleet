@@ -88,11 +88,20 @@ def parse_current(data, current_lsb):
 @click.pass_context
 def cli(ctx, config):
     ctx.ensure_object(dict)
+    click.echo("=" * 50)
+    click.echo("  INA228 Monitor — debug.py")
+    click.echo(f"  smbus2 : {'OK' if _HAS_SMBUS else 'NOT INSTALLED'}")
+    click.echo(f"  rich   : {'OK' if _HAS_RICH else 'not installed (plain output)'}")
+    click.echo("=" * 50)
     if not os.path.exists(config):
         click.echo(f"ERROR: {config} not found", err=True)
         sys.exit(1)
     with open(config) as f:
         ctx.obj["cfg"] = yaml.safe_load(f)
+    click.echo(f"  Config : {os.path.abspath(config)}")
+    enabled = [s for s in ctx.obj["cfg"]["sensors"] if s.get("enabled")]
+    click.echo(f"  Sensors: {len(enabled)} enabled of {len(ctx.obj['cfg']['sensors'])} configured")
+    click.echo("")
 
 
 @cli.command()
@@ -109,12 +118,22 @@ def scan(ctx):
         except OSError:
             pass
 
-    expected = {0x70: "MUX-A", 0x71: "MUX-B", 0x40: "INA228"}
+    expected = {0x70: "MUX-A (sensors 1–8)", 0x71: "MUX-B (sensors 9–16)", 0x40: "INA228"}
+    missing  = [f"0x{a:02X} ({expected[a]})" for a in expected if a not in found]
+
+    click.echo(f"Found {len(found)} device(s):")
     for addr in found:
         tag = expected.get(addr, "UNKNOWN")
-        click.echo(f"  0x{addr:02X}  {tag}")
+        marker = "  [OK]" if addr in expected else "  [?? UNEXPECTED]"
+        click.echo(f"  0x{addr:02X}  {tag}{marker}")
     if not found:
-        click.echo("  No devices found")
+        click.echo("  No devices found — check wiring and I2C enabled (raspi-config)")
+    if missing:
+        click.echo("Expected but NOT found:")
+        for m in missing:
+            click.echo(f"  [MISSING] {m}")
+    else:
+        click.echo("All expected devices present.")
     bus.close()
 
 
@@ -135,7 +154,9 @@ def sensor(ctx, sensor_id, verbose):
     mux_addr = int(s["mux_address"], 16)
     sparkline: deque = deque(maxlen=20)
 
-    click.echo(f"Reading sensor {sensor_id} ({s['label']}) — Ctrl-C to stop")
+    click.echo(f"Reading sensor {sensor_id} ({s['label']}) at 1 Hz — Ctrl-C to stop")
+    click.echo(f"  MUX: {s['mux_address']}  channel: {s['mux_channel']}  INA228: 0x40")
+    click.echo("")
     while True:
         try:
             open_mux(bus, mux_addr, s["mux_channel"])
@@ -327,11 +348,23 @@ def config_check(ctx):
                 errors.append(f"sensors[{i}] missing field: {field}")
 
     if errors:
+        click.echo(f"config.yaml INVALID — {len(errors)} error(s):")
         for e in errors:
-            click.echo(f"ERROR: {e}", err=True)
+            click.echo(f"  [ERR] {e}", err=True)
         sys.exit(1)
     else:
-        click.echo("config.yaml is valid.")
+        click.echo("config.yaml is VALID.")
+        cfg = ctx.obj["cfg"]
+        click.echo(f"  sampling_interval_s : {cfg['sampling_interval_s']}")
+        click.echo(f"  shunt_ohms          : {cfg['shunt_ohms']}")
+        click.echo(f"  max_expected_amps   : {cfg['max_expected_amps']}")
+        click.echo(f"  alert.enabled       : {cfg['alert']['enabled']}")
+        click.echo(f"  alert.threshold_ma  : {cfg['alert']['threshold_ma']}")
+        click.echo(f"  git.auto_commit     : {cfg['git']['auto_commit']}")
+        enabled = [s for s in cfg["sensors"] if s.get("enabled")]
+        click.echo(f"  enabled sensors     : {len(enabled)}")
+        for s in enabled:
+            click.echo(f"    #{s['id']:>2}  {s['label']:<12}  MUX {s['mux_address']} ch{s['mux_channel']}")
 
 
 if __name__ == "__main__":
