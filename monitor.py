@@ -176,21 +176,61 @@ def main():
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     csv_file, csv_writer = _open_csv(_csv_path(log_dir, today))
 
-    interval = cfg["sampling_interval_s"]
+    # Outer loop: write one averaged row per sensor every sampling_interval_s
+    # Inner loop: sub-sample every sub_sample_ms milliseconds
+    write_interval_s  = cfg["sampling_interval_s"]          # default 1 s
+    sub_sample_ms     = cfg.get("sub_sample_ms", 100)        # default 100 ms
+    sub_sample_s      = sub_sample_ms / 1000.0
+    n_sub_samples     = max(1, round(write_interval_s / sub_sample_s))
+
     git_interval = cfg["git"].get("commit_interval_s", 0)
     last_git_commit = time.monotonic()
     loop_errors = 0
 
     log.info(
-        "Monitor started: %d sensors, %ds interval", len(enabled_sensors), interval
+        "Monitor started: %d sensors | sub-sample every %d ms | "
+        "average & write every %d s (%d sub-samples per write)",
+        len(enabled_sensors), sub_sample_ms, write_interval_s, n_sub_samples,
     )
 
     while True:
-        loop_start = time.monotonic()
+        window_start = time.monotonic()
 
         try:
+            # ----- accumulate sub-samples over the write window -----
+            # accumulators: {sensor_id: {"v": [floats], "i": [floats], "errors": int}}
+            accum: dict[int, dict] = {
+                s["id"]: {"v": [], "i": [], "errors": 0}
+                for s in enabled_sensors
+            }
+
+            for sub in range(n_sub_samples):
+                sub_start = time.monotonic()
+
+                for s in sorted(enabled_sensors, key=lambda x: x["id"]):
+                    mux_addr = int(s["mux_address"], 16)
+                    try:
+                        v, i = _read_sensor(
+                            bus, mux_addr, s["mux_channel"], ina_addr, current_lsb
+                        )
+                        accum[s["id"]]["v"].append(v)
+                        accum[s["id"]]["i"].append(i)
+                    except OSError as exc:
+                        accum[s["id"]]["errors"] += 1
+                        log.debug("Sub-sample I2C error sensor %d: %s", s["id"], exc)
+                        try:
+                            _close_mux(bus, mux_addr)
+                        except Exception:
+                            pass
+
+                # sleep for remainder of sub-sample interval
+                elapsed_sub = time.monotonic() - sub_start
+                sleep_sub = max(0, sub_sample_s - elapsed_sub)
+                time.sleep(sleep_sub)
+
+            # ----- compute averages and write one row per sensor -----
             cycle_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            new_day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            new_day  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
             if new_day != today:
                 csv_file.close()
@@ -202,41 +242,46 @@ def main():
 
             readings = []
             for s in sorted(enabled_sensors, key=lambda x: x["id"]):
-                mux_addr = int(s["mux_address"], 16)
-                valid = 1
-                voltage_v = float("nan")
-                current_ua = float("nan")
-                try:
-                    voltage_v, current_ua = _read_sensor(
-                        bus, mux_addr, s["mux_channel"], ina_addr, current_lsb
+                sid  = s["id"]
+                v_samples = accum[sid]["v"]
+                i_samples = accum[sid]["i"]
+                n_good    = len(v_samples)
+                n_errors  = accum[sid]["errors"]
+
+                if n_good > 0:
+                    avg_v  = round(sum(v_samples) / n_good, 4)
+                    avg_i  = round(sum(i_samples) / n_good, 2)
+                    valid  = 1
+                else:
+                    avg_v  = float("nan")
+                    avg_i  = float("nan")
+                    valid  = 0
+
+                if n_errors:
+                    log.warning(
+                        "Sensor %d: %d/%d sub-samples failed",
+                        sid, n_errors, n_sub_samples,
                     )
-                except OSError as exc:
-                    log.warning("I2C error sensor %d: %s", s["id"], exc)
-                    valid = 0
-                    try:
-                        _close_mux(bus, mux_addr)
-                    except Exception:
-                        pass
 
                 row = {
-                    "timestamp": cycle_ts,
-                    "sensor_id": s["id"],
-                    "label": s["label"],
-                    "voltage_V": "" if isnan(voltage_v) else voltage_v,
-                    "current_uA": "" if isnan(current_ua) else current_ua,
-                    "valid": valid,
+                    "timestamp":  cycle_ts,
+                    "sensor_id":  sid,
+                    "label":      s["label"],
+                    "voltage_V":  "" if isnan(avg_v) else avg_v,
+                    "current_uA": "" if isnan(avg_i) else avg_i,
+                    "valid":      valid,
                 }
                 csv_writer.writerow(row)
                 readings.append({
-                    "sensor_id": s["id"],
-                    "label": s["label"],
-                    "voltage_V": voltage_v,
-                    "current_uA": current_ua,
-                    "valid": valid,
+                    "sensor_id":  sid,
+                    "label":      s["label"],
+                    "voltage_V":  avg_v,
+                    "current_uA": avg_i,
+                    "valid":      valid,
                 })
 
-                if valid and not isnan(current_ua):
-                    alerter.push(s["id"], current_ua)
+                if valid:
+                    alerter.push(sid, avg_i)
 
             csv_file.flush()
             alerter.evaluate(readings)
@@ -255,9 +300,12 @@ def main():
             time.sleep(5)
             continue
 
-        elapsed = time.monotonic() - loop_start
-        sleep_time = max(0, interval - elapsed)
-        time.sleep(sleep_time)
+        # The sub-sample sleeps consume most of the window; no extra sleep needed.
+        # But guard against drift if the window ran long.
+        elapsed_window = time.monotonic() - window_start
+        drift = elapsed_window - write_interval_s
+        if drift > 0.05:
+            log.debug("Write window overran by %.3f s", drift)
 
 
 if __name__ == "__main__":

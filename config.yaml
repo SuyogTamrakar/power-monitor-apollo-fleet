@@ -1,4 +1,5 @@
-sampling_interval_s: 10
+sampling_interval_s: 1      # write one averaged row per sensor every N seconds
+sub_sample_ms: 100          # take a raw reading every N ms within that window (10 sub-samples @ 100ms → 1s)
 shunt_ohms: 0.015
 max_expected_amps: 2.0
 log_dir: "./logs"
