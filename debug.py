@@ -79,7 +79,7 @@ def parse_current(data, current_lsb):
     raw = ((data[0] << 16) | (data[1] << 8) | data[2]) >> 4
     if raw & 0x80000:
         raw -= 0x100000
-    return round(raw * current_lsb * 1_000_000, 2)
+    return round(abs(raw * current_lsb * 1_000_000), 2)
 
 
 # -----------------------------------------------------------------------
@@ -139,10 +139,11 @@ def scan(ctx):
 
 @cli.command()
 @click.argument("sensor_id", type=int)
+@click.option("--interval", default=5, help="Sample interval in ms (default 5)")
 @click.option("--verbose", is_flag=True)
 @click.pass_context
-def sensor(ctx, sensor_id, verbose):
-    """Read SENSOR_ID continuously at 1 Hz."""
+def sensor(ctx, sensor_id, interval, verbose):
+    """Read SENSOR_ID continuously, printing raw values every INTERVAL ms (default 5ms)."""
     cfg = ctx.obj["cfg"]
     s = next((x for x in cfg["sensors"] if x["id"] == sensor_id), None)
     if s is None:
@@ -152,30 +153,31 @@ def sensor(ctx, sensor_id, verbose):
     bus = get_bus()
     shunt_cal, current_lsb = shunt_cal_value(cfg)
     mux_addr = int(s["mux_address"], 16)
-    sparkline: deque = deque(maxlen=20)
+    interval_s = interval / 1000.0
+    sample_count = 0
 
-    click.echo(f"Reading sensor {sensor_id} ({s['label']}) at 1 Hz — Ctrl-C to stop")
+    click.echo(f"Reading sensor {sensor_id} ({s['label']}) every {interval}ms — Ctrl-C to stop")
     click.echo(f"  MUX: {s['mux_address']}  channel: {s['mux_channel']}  INA228: 0x40")
-    click.echo("")
+    click.echo(f"  {'#':<6}  {'Timestamp':<15}  {'Voltage (V)':>12}  {'Current (µA)':>14}")
+    click.echo(f"  {'-'*6}  {'-'*15}  {'-'*12}  {'-'*14}")
     while True:
+        t_start = time.monotonic()
         try:
             open_mux(bus, mux_addr, s["mux_channel"])
             if verbose:
                 vbus_raw = read_raw(bus, 0x40, _REG_VBUS)
-                iraw = read_raw(bus, 0x40, _REG_CURRENT)
+                iraw     = read_raw(bus, 0x40, _REG_CURRENT)
                 click.echo(f"  VBUS raw: {vbus_raw.hex()}  CURRENT raw: {iraw.hex()}")
             v = parse_vbus(read_raw(bus, 0x40, _REG_VBUS))
             i = parse_current(read_raw(bus, 0x40, _REG_CURRENT), current_lsb)
             close_mux(bus, mux_addr)
-            sparkline.append(i)
-            bar = "".join("▁▂▃▄▅▆▇█"[min(7, int(max(0, x) / max(sparkline) * 7))]
-                          if max(sparkline) > 0 else "▁"
-                          for x in sparkline)
-            ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
-            click.echo(f"[{ts}]  V={v:.4f} V  I={i:.2f} µA  {bar}")
+            sample_count += 1
+            ts = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+            click.echo(f"  {sample_count:<6}  {ts:<15}  {v:>12.4f}  {i:>14.2f}")
         except OSError as exc:
             click.echo(f"  I2C error: {exc}", err=True)
-        time.sleep(1)
+        elapsed = time.monotonic() - t_start
+        time.sleep(max(0, interval_s - elapsed))
 
 
 @cli.command(name="all")
