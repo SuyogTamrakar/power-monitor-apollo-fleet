@@ -79,7 +79,7 @@ def parse_current(data, current_lsb):
     raw = ((data[0] << 16) | (data[1] << 8) | data[2]) >> 4
     if raw & 0x80000:
         raw -= 0x100000
-    return round(raw * current_lsb * 1000, 1)
+    return round(raw * current_lsb * 1_000_000, 2)
 
 
 # -----------------------------------------------------------------------
@@ -172,7 +172,7 @@ def sensor(ctx, sensor_id, verbose):
                           if max(sparkline) > 0 else "▁"
                           for x in sparkline)
             ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
-            click.echo(f"[{ts}]  V={v:.4f} V  I={i:.1f} mA  {bar}")
+            click.echo(f"[{ts}]  V={v:.4f} V  I={i:.2f} µA  {bar}")
         except OSError as exc:
             click.echo(f"  I2C error: {exc}", err=True)
         time.sleep(1)
@@ -188,7 +188,7 @@ def all_sensors(ctx):
 
     if _HAS_RICH:
         table = Table(title="INA228 — All Sensors")
-        for col in ["ID", "Label", "MUX", "Ch", "Voltage (V)", "Current (mA)", "Status"]:
+        for col in ["ID", "Label", "MUX", "Ch", "Voltage (V)", "Current (µA)", "Status"]:
             table.add_column(col)
     else:
         click.echo(f"{'ID':>3}  {'Label':<10}  {'Voltage':>10}  {'Current':>12}  Status")
@@ -215,12 +215,12 @@ def all_sensors(ctx):
             table.add_row(
                 str(s["id"]), s["label"], s["mux_address"], str(s["mux_channel"]),
                 f"{v:.4f}" if not isnan(v) else "NaN",
-                f"{i:.1f}" if not isnan(i) else "NaN",
+                f"{i:.2f}" if not isnan(i) else "NaN",
                 status,
             )
         else:
             v_str = f"{v:.4f}" if not isnan(v) else "NaN"
-            i_str = f"{i:.1f}" if not isnan(i) else "NaN"
+            i_str = f"{i:.2f}" if not isnan(i) else "NaN"
             click.echo(f"{s['id']:>3}  {s['label']:<10}  {v_str:>10}  {i_str:>12}  {status}")
 
     if _HAS_RICH:
@@ -277,8 +277,8 @@ def calibrate(ctx, sensor_id):
         samples.append(i)
         time.sleep(0.5)
     offset = sum(samples) / len(samples)
-    click.echo(f"Baseline offset: {offset:.3f} mA")
-    click.echo("(Manual: add calibration.offset_mA to config.yaml for this sensor)")
+    click.echo(f"Baseline offset: {offset:.2f} µA")
+    click.echo("(Manual: add calibration.offset_uA to config.yaml for this sensor)")
     bus.close()
 
 
@@ -292,10 +292,10 @@ def alert_test(ctx, sensor_id):
     log_dir = cfg["log_dir"]
     os.makedirs(log_dir, exist_ok=True)
     alerter = Alerter(cfg, log_dir)
-    threshold = cfg["alert"]["threshold_ma"]
+    threshold = cfg["alert"]["threshold_ua"]
     fill_value = threshold + 1.0
     window_size = int(cfg["alert"]["window_hours"] * 3600 / cfg["sampling_interval_s"])
-    click.echo(f"Filling sensor {sensor_id} deque ({window_size} samples) with {fill_value} mA...")
+    click.echo(f"Filling sensor {sensor_id} deque ({window_size} samples) with {fill_value} µA...")
     for _ in range(window_size):
         alerter.push(sensor_id, fill_value)
     s = next((x for x in cfg["sensors"] if x["id"] == sensor_id), {"label": "test"})
@@ -303,7 +303,7 @@ def alert_test(ctx, sensor_id):
         "sensor_id": sensor_id,
         "label": s.get("label", "test"),
         "voltage_V": 5.0,
-        "current_mA": fill_value,
+        "current_uA": fill_value,
         "valid": 1,
     }]
     fired = alerter.evaluate(readings)

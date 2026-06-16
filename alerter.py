@@ -83,7 +83,7 @@ class Alerter:
             return False
 
         now = datetime.now(timezone.utc)
-        threshold = self.cfg["threshold_ma"]
+        threshold = self.cfg["threshold_ua"]
         cooldown_s = self.cfg["cooldown_minutes"] * 60
         any_active = False
 
@@ -121,7 +121,7 @@ class Alerter:
         with open(self.alerts_csv, "a", newline="") as f:
             fieldnames = [
                 "timestamp", "sensor_id", "label",
-                "rolling_avg_mA", "current_mA", "voltage_V",
+                "rolling_avg_uA", "current_uA", "voltage_V",
                 "alert_count", "cleared_at",
             ]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -131,15 +131,15 @@ class Alerter:
                 "timestamp": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "sensor_id": sid,
                 "label": r["label"],
-                "rolling_avg_mA": round(avg, 2),
-                "current_mA": r["current_mA"],
+                "rolling_avg_uA": round(avg, 2),
+                "current_uA": r["current_uA"],
                 "voltage_V": r["voltage_V"],
                 "alert_count": self.alert_counts[sid],
                 "cleared_at": "",
             })
         log.warning(
-            "ALERT sensor %d (%s): rolling avg %.2f mA > %.1f mA threshold",
-            sid, r["label"], avg, self.cfg["threshold_ma"],
+            "ALERT sensor %d (%s): rolling avg %.2f µA > %.1f µA threshold",
+            sid, r["label"], avg, self.cfg["threshold_ua"],
         )
 
     def _write_cleared(self, sensor_id: int, now: datetime):
@@ -185,7 +185,7 @@ class Alerter:
                 "label": row["label"],
                 "count": int(row["alert_count"]),
                 "last_ts": row["timestamp"],
-                "last_avg": row["rolling_avg_mA"],
+                "last_avg": row["rolling_avg_uA"],
                 "status": "ACTIVE" if not row["cleared_at"] else "CLEARED",
             }
 
@@ -195,12 +195,12 @@ class Alerter:
             "# INA228 Alert Log",
             f"Last updated: {now.strftime('%Y-%m-%dT%H:%M:%SZ')}",
             f"Total alerts (all sensors, all time): {total_alerts}",
-            f"Threshold: {self.cfg['threshold_ma']} mA  |  "
+            f"Threshold: {self.cfg['threshold_ua']} µA  |  "
             f"Window: {self.cfg['window_hours']} h  |  "
             f"Cooldown: {self.cfg['cooldown_minutes']} min",
             "",
             "## Sensor Summary",
-            "| ID | Label | Alerts | Last Alert | Avg mA | Status |",
+            "| ID | Label | Alerts | Last Alert | Avg µA  | Status |",
             "|----|-------|--------|------------|--------|--------|",
         ]
         for sid, s in sorted(sensor_summary.items()):
@@ -212,13 +212,13 @@ class Alerter:
         lines += [
             "",
             "## Recent Alerts (last 50)",
-            "| Timestamp | ID | Label | Avg mA | Current mA | Voltage V | Cleared At |",
+            "| Timestamp | ID | Label | Avg µA | Current µA | Voltage V | Cleared At |",
             "|-----------|----|----|--------|-----------|----------|-----------|",
         ]
         for row in recent:
             lines.append(
                 f"| {row['timestamp']} | {row['sensor_id']} | {row['label']} | "
-                f"{row['rolling_avg_mA']} | {row['current_mA']} | "
+                f"{row['rolling_avg_uA']} | {row['current_uA']} | "
                 f"{row['voltage_V']} | {row.get('cleared_at', '')} |"
             )
 

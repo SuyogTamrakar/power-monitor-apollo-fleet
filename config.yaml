@@ -7,7 +7,7 @@ log_rotate_days: 1
 alert:
   enabled: true
   window_hours: 2
-  threshold_ma: 5.0
+  threshold_ua: 5000.0   # 5000 µA = 5 mA
   gpio_pin: null   # Set to BCM pin number (e.g. 17) to enable GPIO output; null disables
   cooldown_minutes: 30
 

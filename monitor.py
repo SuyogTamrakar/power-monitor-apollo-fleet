@@ -89,22 +89,22 @@ def _configure_sensor(bus, mux_addr: int, channel: int, ina_addr: int,
 
 def _read_sensor(bus, mux_addr: int, channel: int, ina_addr: int,
                  current_lsb: float) -> tuple[float, float]:
-    """Return (voltage_V, current_mA). Raises OSError on I2C failure."""
+    """Return (voltage_V, current_uA). Raises OSError on I2C failure."""
     _open_mux_channel(bus, mux_addr, channel)
     vraw = _read_reg16_unsigned(bus, ina_addr, _REG_VBUS)
     iraw = _read_reg16_signed(bus, ina_addr, _REG_CURRENT)
     _close_mux(bus, mux_addr)
 
     voltage_v = round(vraw * 195.3125e-6, 4)
-    current_ma = round(iraw * current_lsb * 1000, 1)
-    return voltage_v, current_ma
+    current_ua = round(iraw * current_lsb * 1_000_000, 2)
+    return voltage_v, current_ua
 
 
 def _csv_path(log_dir: str, date: str) -> str:
     return os.path.join(log_dir, f"{date}.csv")
 
 
-CSV_HEADER = ["timestamp", "sensor_id", "label", "voltage_V", "current_mA", "valid"]
+CSV_HEADER = ["timestamp", "sensor_id", "label", "voltage_V", "current_uA", "valid"]
 
 
 def _open_csv(path: str):
@@ -205,9 +205,9 @@ def main():
                 mux_addr = int(s["mux_address"], 16)
                 valid = 1
                 voltage_v = float("nan")
-                current_ma = float("nan")
+                current_ua = float("nan")
                 try:
-                    voltage_v, current_ma = _read_sensor(
+                    voltage_v, current_ua = _read_sensor(
                         bus, mux_addr, s["mux_channel"], ina_addr, current_lsb
                     )
                 except OSError as exc:
@@ -223,7 +223,7 @@ def main():
                     "sensor_id": s["id"],
                     "label": s["label"],
                     "voltage_V": "" if isnan(voltage_v) else voltage_v,
-                    "current_mA": "" if isnan(current_ma) else current_ma,
+                    "current_uA": "" if isnan(current_ua) else current_ua,
                     "valid": valid,
                 }
                 csv_writer.writerow(row)
@@ -231,12 +231,12 @@ def main():
                     "sensor_id": s["id"],
                     "label": s["label"],
                     "voltage_V": voltage_v,
-                    "current_mA": current_ma,
+                    "current_uA": current_ua,
                     "valid": valid,
                 })
 
-                if valid and not isnan(current_ma):
-                    alerter.push(s["id"], current_ma)
+                if valid and not isnan(current_ua):
+                    alerter.push(s["id"], current_ua)
 
             csv_file.flush()
             alerter.evaluate(readings)

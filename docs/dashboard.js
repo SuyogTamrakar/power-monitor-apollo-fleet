@@ -119,7 +119,7 @@ function plotLayout(title, yLabel) {
 }
 
 function renderCharts() {
-  Plotly.newPlot("chartCurrent", sensorTraces("current_mA"), plotLayout("Current over Time", "mA"), { responsive: true });
+  Plotly.newPlot("chartCurrent", sensorTraces("current_uA"), plotLayout("Current over Time", "µA"), { responsive: true });
   Plotly.newPlot("chartVoltage", sensorTraces("voltage_V"),  plotLayout("Voltage over Time", "V"),  { responsive: true });
 }
 
@@ -131,16 +131,16 @@ function renderStats() {
   ids.forEach(id => {
     const rows = allData.filter(r => r.sensor_id === id && r.valid === "1");
     if (!rows.length) return;
-    const currents = rows.map(r => parseFloat(r.current_mA)).filter(v => !isNaN(v));
+    const currents = rows.map(r => parseFloat(r.current_uA)).filter(v => !isNaN(v));
     const voltages = rows.map(r => parseFloat(r.voltage_V)).filter(v => !isNaN(v));
     const label = rows[0].label;
     const card = document.createElement("div");
     card.className = "p-3 border rounded";
     card.innerHTML = `
       <div class="font-semibold">${id}: ${label}</div>
-      <div>Current — min: ${Math.min(...currents).toFixed(1)} mA,
-        max: ${Math.max(...currents).toFixed(1)} mA,
-        mean: ${(currents.reduce((a,b)=>a+b,0)/currents.length).toFixed(1)} mA</div>
+      <div>Current — min: ${Math.min(...currents).toFixed(2)} µA,
+        max: ${Math.max(...currents).toFixed(2)} µA,
+        mean: ${(currents.reduce((a,b)=>a+b,0)/currents.length).toFixed(2)} µA</div>
       <div>Voltage — min: ${Math.min(...voltages).toFixed(4)} V,
         max: ${Math.max(...voltages).toFixed(4)} V,
         mean: ${(voltages.reduce((a,b)=>a+b,0)/voltages.length).toFixed(4)} V</div>
@@ -156,7 +156,7 @@ function renderAlertTable() {
   alertData.slice().reverse().forEach(r => {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${r.timestamp}</td><td>${r.sensor_id}</td><td>${r.label}</td>
-      <td>${r.rolling_avg_mA}</td><td>${r.current_mA}</td><td>${r.voltage_V}</td>
+      <td>${r.rolling_avg_mA}</td><td>${r.current_uA}</td><td>${r.voltage_V}</td>
       <td>${r.cleared_at || "—"}</td>`;
     tbody.appendChild(tr);
   });
