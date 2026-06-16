@@ -26,17 +26,17 @@ sensors:
   - id: 2
     mux_address: "0x70"
     mux_channel: 1
-    enabled: true
+    enabled: false
     label: "DUT-A2"
   - id: 3
     mux_address: "0x70"
     mux_channel: 2
-    enabled: true
+    enabled: false
     label: "DUT-A3"
   - id: 4
     mux_address: "0x70"
     mux_channel: 3
-    enabled: true
+    enabled: false
     label: "DUT-A4"
   - id: 5
     mux_address: "0x70"
