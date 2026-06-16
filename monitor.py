@@ -27,9 +27,10 @@ _REG_VBUS      = 0x05
 _REG_CURRENT   = 0x07
 _REG_DIAG_ALRT = 0x0B
 
-# CONFIG word: AVG=16 (bits[8:6]=011), VBUSCT=1052µs (bits[5:3]=100),
-# VSHCT=1052µs (bits[2:0]=100), MODE=Continuous shunt+bus (bits[15:12]=1111)
-_CONFIG_VALUE = 0xFB34
+# CONFIG word: AVG=1, VBUSCT=50µs, VSHCT=50µs, MODE=Continuous shunt+bus
+# Fastest possible ADC setting — no internal averaging, 50µs conversion time
+# Total conversion time per reading: ~100µs (well within 5ms poll interval)
+_CONFIG_VALUE = 0xB000
 _DIAG_CNVRF   = 0x0001
 
 
@@ -96,7 +97,7 @@ def _read_sensor(bus, mux_addr: int, channel: int, ina_addr: int,
     _close_mux(bus, mux_addr)
 
     voltage_v = round(vraw * 195.3125e-6, 4)
-    current_ua = round(iraw * current_lsb * 1_000_000, 2)
+    current_ua = round(abs(iraw * current_lsb * 1_000_000), 2)
     return voltage_v, current_ua
 
 
