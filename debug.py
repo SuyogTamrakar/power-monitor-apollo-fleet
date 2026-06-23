@@ -140,10 +140,11 @@ def scan(ctx):
 @cli.command()
 @click.argument("sensor_id", type=int)
 @click.option("--interval", default=5, help="Sample interval in ms (default 5)")
+@click.option("--avg-window", default=50, help="Rolling average window in samples (default 50 = 250ms at 5ms)")
 @click.option("--verbose", is_flag=True)
 @click.pass_context
-def sensor(ctx, sensor_id, interval, verbose):
-    """Read SENSOR_ID continuously, printing raw values every INTERVAL ms (default 5ms)."""
+def sensor(ctx, sensor_id, interval, avg_window, verbose):
+    """Read SENSOR_ID continuously, printing raw + rolling average every INTERVAL ms (default 5ms)."""
     cfg = ctx.obj["cfg"]
     s = next((x for x in cfg["sensors"] if x["id"] == sensor_id), None)
     if s is None:
@@ -155,11 +156,15 @@ def sensor(ctx, sensor_id, interval, verbose):
     mux_addr = int(s["mux_address"], 16)
     interval_s = interval / 1000.0
     sample_count = 0
+    window_ms = avg_window * interval
+    i_buf: deque = deque(maxlen=avg_window)
 
     click.echo(f"Reading sensor {sensor_id} ({s['label']}) every {interval}ms — Ctrl-C to stop")
     click.echo(f"  MUX: {s['mux_address']}  channel: {s['mux_channel']}  INA228: 0x40")
-    click.echo(f"  {'#':<6}  {'Timestamp':<15}  {'Voltage (V)':>12}  {'Current (µA)':>14}")
-    click.echo(f"  {'-'*6}  {'-'*15}  {'-'*12}  {'-'*14}")
+    click.echo(f"  Rolling average window: {avg_window} samples ({window_ms}ms)")
+    click.echo("")
+    click.echo(f"  {'#':<6}  {'Timestamp':<15}  {'Voltage (V)':>12}  {'Raw (µA)':>10}  {'Avg (µA)':>10}")
+    click.echo(f"  {'-'*6}  {'-'*15}  {'-'*12}  {'-'*10}  {'-'*10}")
     while True:
         t_start = time.monotonic()
         try:
@@ -171,9 +176,11 @@ def sensor(ctx, sensor_id, interval, verbose):
             v = parse_vbus(read_raw(bus, 0x40, _REG_VBUS))
             i = parse_current(read_raw(bus, 0x40, _REG_CURRENT), current_lsb)
             close_mux(bus, mux_addr)
+            i_buf.append(i)
+            avg = sum(i_buf) / len(i_buf)
             sample_count += 1
             ts = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
-            click.echo(f"  {sample_count:<6}  {ts:<15}  {v:>12.4f}  {i:>14.2f}")
+            click.echo(f"  {sample_count:<6}  {ts:<15}  {v:>12.4f}  {i:>10.2f}  {avg:>10.2f}")
         except OSError as exc:
             click.echo(f"  I2C error: {exc}", err=True)
         elapsed = time.monotonic() - t_start
