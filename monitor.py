@@ -27,9 +27,9 @@ _REG_VBUS      = 0x05
 _REG_CURRENT   = 0x07
 _REG_DIAG_ALRT = 0x0B
 
-# CONFIG word: AVG=4, VBUSCT=150µs, VSHCT=150µs, MODE=Continuous shunt+bus
-# AVG=4 gives 4x noise reduction vs AVG=1; total conversion time ~1.2ms
-_CONFIG_VALUE = 0xB492
+# CONFIG word: AVG=16, VBUSCT=280µs, VSHCT=280µs, MODE=Continuous shunt+bus
+# AVG=16 gives 16x noise reduction; total conversion time ~9ms
+_CONFIG_VALUE = 0xB924
 _DIAG_CNVRF   = 0x0001
 
 
@@ -176,35 +176,39 @@ def main():
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     csv_file, csv_writer = _open_csv(_csv_path(log_dir, today))
 
-    # Outer loop: write one averaged row per sensor every sampling_interval_s
-    # Inner loop: sub-sample every sub_sample_ms milliseconds
-    write_interval_s  = cfg["sampling_interval_s"]          # default 1 s
-    sub_sample_ms     = cfg.get("sub_sample_ms", 100)        # default 100 ms
-    sub_sample_s      = sub_sample_ms / 1000.0
-    n_sub_samples     = max(1, round(write_interval_s / sub_sample_s))
+    # Sub-sample every sub_sample_ms; average the last avg_window_samples into each CSV write
+    write_interval_s   = cfg["sampling_interval_s"]             # default 1 s
+    sub_sample_ms      = cfg.get("sub_sample_ms", 5)            # default 5 ms
+    avg_window_samples = cfg.get("avg_window_samples", 150)     # default 150 samples = 750ms
+    sub_sample_s       = sub_sample_ms / 1000.0
+    n_write_samples    = max(1, round(write_interval_s / sub_sample_s))
+
+    # Per-sensor rolling deques — persist across write cycles for true sliding average
+    from collections import deque as _deque
+    v_bufs: dict[int, _deque] = {s["id"]: _deque(maxlen=avg_window_samples) for s in enabled_sensors}
+    i_bufs: dict[int, _deque] = {s["id"]: _deque(maxlen=avg_window_samples) for s in enabled_sensors}
 
     git_interval = cfg["git"].get("commit_interval_s", 0)
     last_git_commit = time.monotonic()
+    last_write = time.monotonic()
     loop_errors = 0
 
     log.info(
         "Monitor started: %d sensors | sub-sample every %d ms | "
-        "average & write every %d s (%d sub-samples per write)",
-        len(enabled_sensors), sub_sample_ms, write_interval_s, n_sub_samples,
+        "rolling avg %d samples (%.0f ms) | write every %d s",
+        len(enabled_sensors), sub_sample_ms,
+        avg_window_samples, avg_window_samples * sub_sample_ms,
+        write_interval_s,
     )
 
     while True:
         window_start = time.monotonic()
 
         try:
-            # ----- accumulate sub-samples over the write window -----
-            # accumulators: {sensor_id: {"v": [floats], "i": [floats], "errors": int}}
-            accum: dict[int, dict] = {
-                s["id"]: {"v": [], "i": [], "errors": 0}
-                for s in enabled_sensors
-            }
+            # ----- collect sub-samples for one write window -----
+            errors: dict[int, int] = {s["id"]: 0 for s in enabled_sensors}
 
-            for sub in range(n_sub_samples):
+            for _ in range(n_write_samples):
                 sub_start = time.monotonic()
 
                 for s in sorted(enabled_sensors, key=lambda x: x["id"]):
@@ -213,22 +217,20 @@ def main():
                         v, i = _read_sensor(
                             bus, mux_addr, s["mux_channel"], ina_addr, current_lsb
                         )
-                        accum[s["id"]]["v"].append(v)
-                        accum[s["id"]]["i"].append(i)
+                        v_bufs[s["id"]].append(v)
+                        i_bufs[s["id"]].append(i)
                     except OSError as exc:
-                        accum[s["id"]]["errors"] += 1
+                        errors[s["id"]] += 1
                         log.debug("Sub-sample I2C error sensor %d: %s", s["id"], exc)
                         try:
                             _close_mux(bus, mux_addr)
                         except Exception:
                             pass
 
-                # sleep for remainder of sub-sample interval
                 elapsed_sub = time.monotonic() - sub_start
-                sleep_sub = max(0, sub_sample_s - elapsed_sub)
-                time.sleep(sleep_sub)
+                time.sleep(max(0, sub_sample_s - elapsed_sub))
 
-            # ----- compute averages and write one row per sensor -----
+            # ----- write one averaged row per sensor -----
             cycle_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             new_day  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -242,25 +244,23 @@ def main():
 
             readings = []
             for s in sorted(enabled_sensors, key=lambda x: x["id"]):
-                sid  = s["id"]
-                v_samples = accum[sid]["v"]
-                i_samples = accum[sid]["i"]
-                n_good    = len(v_samples)
-                n_errors  = accum[sid]["errors"]
+                sid      = s["id"]
+                n_good   = len(v_bufs[sid])
+                n_errors = errors[sid]
 
                 if n_good > 0:
-                    avg_v  = round(sum(v_samples) / n_good, 4)
-                    avg_i  = round(sum(i_samples) / n_good, 2)
-                    valid  = 1
+                    avg_v = round(sum(v_bufs[sid]) / n_good, 4)
+                    avg_i = round(sum(i_bufs[sid]) / n_good, 2)
+                    valid = 1
                 else:
-                    avg_v  = float("nan")
-                    avg_i  = float("nan")
-                    valid  = 0
+                    avg_v = float("nan")
+                    avg_i = float("nan")
+                    valid = 0
 
                 if n_errors:
                     log.warning(
                         "Sensor %d: %d/%d sub-samples failed",
-                        sid, n_errors, n_sub_samples,
+                        sid, n_errors, n_write_samples,
                     )
 
                 row = {

@@ -140,7 +140,7 @@ def scan(ctx):
 @cli.command()
 @click.argument("sensor_id", type=int)
 @click.option("--interval", default=5, help="Sample interval in ms (default 5)")
-@click.option("--avg-window", default=50, help="Rolling average window in samples (default 50 = 250ms at 5ms)")
+@click.option("--avg-window", default=150, help="Rolling average window in samples (default 150 = 750ms at 5ms)")
 @click.option("--verbose", is_flag=True)
 @click.pass_context
 def sensor(ctx, sensor_id, interval, avg_window, verbose):
