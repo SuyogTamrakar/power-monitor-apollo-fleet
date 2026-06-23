@@ -27,10 +27,9 @@ _REG_VBUS      = 0x05
 _REG_CURRENT   = 0x07
 _REG_DIAG_ALRT = 0x0B
 
-# CONFIG word: AVG=1, VBUSCT=50µs, VSHCT=50µs, MODE=Continuous shunt+bus
-# Fastest possible ADC setting — no internal averaging, 50µs conversion time
-# Total conversion time per reading: ~100µs (well within 5ms poll interval)
-_CONFIG_VALUE = 0xB000
+# CONFIG word: AVG=4, VBUSCT=150µs, VSHCT=150µs, MODE=Continuous shunt+bus
+# AVG=4 gives 4x noise reduction vs AVG=1; total conversion time ~1.2ms
+_CONFIG_VALUE = 0xB492
 _DIAG_CNVRF   = 0x0001
 
 
