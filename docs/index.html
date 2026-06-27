@@ -10,11 +10,20 @@
   <style>
     body.dark { background:#1e1e1e; color:#e0e0e0; }
     body.dark .border { border-color:#444; }
+    body.dark input { background:#2a2a2a; color:#e0e0e0; border-color:#555; }
+    body.dark .bg-white { background:#2a2a2a; }
     td, th { padding: 4px 8px; border: 1px solid #ccc; }
-    body.dark td, body.dark th { border-color: #555; }
+    body.dark td, body.dark th { border-color:#555; }
+    .range-btn { padding: 4px 12px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 0.8rem; cursor: pointer; transition: all 0.15s; }
+    .range-btn:hover { background: #3b82f6; color: white; border-color: #3b82f6; }
+    .range-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+    body.dark .range-btn { border-color:#555; color:#e0e0e0; }
+    body.dark .range-btn:hover, body.dark .range-btn.active { background:#2563eb; border-color:#2563eb; }
   </style>
 </head>
 <body class="font-sans p-4">
+
+  <!-- Header -->
   <div class="flex justify-between items-center mb-4">
     <h1 class="text-2xl font-bold">INA228 Power Monitor</h1>
     <div class="flex gap-2">
@@ -23,33 +32,48 @@
     </div>
   </div>
 
-  <!-- Date range + load -->
+  <!-- Quick range buttons -->
+  <div class="flex flex-wrap gap-2 mb-3">
+    <span class="text-sm font-semibold self-center mr-1">Range:</span>
+    <button class="range-btn" onclick="setRange(30*60*1000,        this)">Last 30 min</button>
+    <button class="range-btn" onclick="setRange(60*60*1000,        this)">Last 1 hour</button>
+    <button class="range-btn" onclick="setRange(4*60*60*1000,      this)">Last 4 hours</button>
+    <button class="range-btn" onclick="setRange(24*60*60*1000,     this)">Last 24 hours</button>
+    <button class="range-btn" onclick="setRange(7*24*60*60*1000,   this)">Last 7 days</button>
+    <button class="range-btn" onclick="setRange(30*24*60*60*1000,  this)">Last 1 month</button>
+  </div>
+
+  <!-- Custom date range -->
   <div class="flex flex-wrap gap-3 items-end mb-4">
     <label class="flex flex-col text-sm">
       Start date
-      <input id="startDate" type="date" class="border rounded px-2 py-1" />
+      <input id="startDate" type="date" class="border rounded px-2 py-1" onchange="clearActiveRange()" />
     </label>
     <label class="flex flex-col text-sm">
       End date
-      <input id="endDate" type="date" class="border rounded px-2 py-1" />
+      <input id="endDate" type="date" class="border rounded px-2 py-1" onchange="clearActiveRange()" />
     </label>
     <button onclick="loadData()" class="px-4 py-1 bg-blue-600 text-white rounded">Load</button>
-    <span id="status" class="text-sm text-gray-500"></span>
+    <span id="status" class="text-sm text-gray-500 self-center"></span>
   </div>
 
   <!-- Sensor selector -->
   <div class="mb-4">
-    <div class="text-sm font-semibold mb-1">Sensors</div>
-    <div id="sensorList" class="flex flex-wrap gap-1"></div>
+    <div class="flex items-center gap-3 mb-1">
+      <span class="text-sm font-semibold">Sensors</span>
+      <button onclick="selectAllSensors(true)"  class="text-xs text-blue-500 underline">All</button>
+      <button onclick="selectAllSensors(false)" class="text-xs text-blue-500 underline">None</button>
+    </div>
+    <div id="sensorList" class="flex flex-wrap gap-2"></div>
   </div>
 
   <!-- Charts -->
-  <div id="chartCurrent" class="mb-6" style="height:380px"></div>
-  <div id="chartVoltage" class="mb-6" style="height:380px"></div>
+  <div id="chartCurrent" class="mb-6" style="height:420px"></div>
+  <div id="chartVoltage"  class="mb-6" style="height:320px"></div>
 
   <!-- Stats -->
   <h2 class="text-lg font-semibold mb-2">Statistics</h2>
-  <div id="statsPanel" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-6"></div>
+  <div id="statsPanel" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6"></div>
 
   <!-- Alert summary -->
   <h2 class="text-lg font-semibold mb-2">Alert Events</h2>
