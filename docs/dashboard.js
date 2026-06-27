@@ -75,6 +75,8 @@ async function loadData() {
   const visible = filterByRange(allData);
   document.getElementById("status").textContent =
     `Loaded ${visible.length} rows across ${dates.length} day(s).`;
+  document.getElementById("lastRefresh").textContent =
+    `Last updated: ${new Date().toLocaleTimeString()}`;
 
   buildSensorList(visible);
   renderCharts(visible);
@@ -225,6 +227,25 @@ function downloadCSV() {
   a.click();
 }
 
+// ---- Auto-refresh --------------------------------------------------------
+let autoRefreshTimer = null;
+const AUTO_REFRESH_MS = 60 * 1000; // refresh data every 60 seconds
+
+function scheduleRefresh() {
+  clearTimeout(autoRefreshTimer);
+  autoRefreshTimer = setTimeout(async () => {
+    // Update date inputs if a quick range is active so the window slides forward
+    if (activeRangeMs) {
+      const end   = new Date();
+      const start = new Date(end.getTime() - activeRangeMs);
+      document.getElementById("startDate").value = isoDate(start);
+      document.getElementById("endDate").value   = isoDate(end);
+    }
+    await loadData();
+    scheduleRefresh();
+  }, AUTO_REFRESH_MS);
+}
+
 // ---- Init ----------------------------------------------------------------
 (function init() {
   if (darkMode) document.body.classList.add("dark");
@@ -234,10 +255,9 @@ function downloadCSV() {
   document.getElementById("startDate").value = isoDate(start);
   document.getElementById("endDate").value   = isoDate(end);
   activeRangeMs = 60*60*1000;
-  // Highlight "Last 1 hour" button after DOM is ready
   window.addEventListener("load", () => {
     const btns = document.querySelectorAll(".range-btn");
     if (btns[1]) btns[1].classList.add("active");
-    loadData();
+    loadData().then(scheduleRefresh);
   });
 })();
