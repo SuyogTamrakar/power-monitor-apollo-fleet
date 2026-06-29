@@ -116,13 +116,14 @@ async function loadData() {
   allData = [];
 
   try {
-    // For sub-day quick ranges, only fetch the CSVs we actually need
+    // For sub-day quick ranges, only fetch the CSVs we actually need.
+    // Always include yesterday so anomaly detection has a baseline.
     let dates = dateRange(start, end);
     if (activeRangeMs && activeRangeMs < 24*60*60*1000) {
-      // Only need today (and yesterday if we're close to midnight)
       const now = new Date();
       const cutoff = new Date(now.getTime() - activeRangeMs);
-      dates = [...new Set([isoDate(cutoff), isoDate(now)])];
+      const yesterdayStr = isoDate(new Date(Date.now() - 86400000));
+      dates = [...new Set([yesterdayStr, isoDate(cutoff), isoDate(now)])];
     }
 
     const results = await Promise.allSettled(
@@ -143,6 +144,7 @@ async function loadData() {
     renderCharts(visible);
     renderStats(visible);
     renderAlertTable(visible);
+    renderAnomalyAlerts(allData); // uses full dataset (needs today + yesterday)
   } catch (err) {
     document.getElementById("status").textContent = `Error: ${err.message}`;
   }
@@ -300,6 +302,69 @@ function renderStats(rows) {
       <div class="text-xs text-gray-400 mt-1">${sRows.length} samples</div>
     `;
     panel.appendChild(card);
+  });
+}
+
+// ---- Day-over-day anomaly detection --------------------------------------
+function renderAnomalyAlerts(allRows) {
+  const panel = document.getElementById("anomalyPanel");
+  if (!panel) return;
+
+  // Split rows into today vs yesterday by UTC date
+  const todayStr     = isoDate(new Date());
+  const yesterdayStr = isoDate(new Date(Date.now() - 86400000));
+
+  // Compute per-sensor daily averages (valid rows only)
+  const avgs = {}; // avgs[sid][date] = { sum, count }
+  allRows.forEach(r => {
+    if (r.valid !== "1") return;
+    const d = r.timestamp.slice(0, 10);
+    if (d !== todayStr && d !== yesterdayStr) return;
+    const val = parseFloat(r.current_uA);
+    if (isNaN(val)) return;
+    if (!avgs[r.sensor_id]) avgs[r.sensor_id] = {};
+    if (!avgs[r.sensor_id][d]) avgs[r.sensor_id][d] = { sum: 0, count: 0 };
+    avgs[r.sensor_id][d].sum   += val;
+    avgs[r.sensor_id][d].count += 1;
+  });
+
+  const anomalies = [];
+  Object.entries(avgs).forEach(([sid, days]) => {
+    const tod  = days[todayStr];
+    const yest = days[yesterdayStr];
+    if (!tod || !yest || yest.count === 0) return;
+    const todAvg  = tod.sum  / tod.count;
+    const yestAvg = yest.sum / yest.count;
+    if (yestAvg < 1) return; // ignore noise-floor sensors (< 1 µA baseline)
+    const ratio = todAvg / yestAvg;
+    if (ratio >= 2) {
+      const label = allRows.find(r => r.sensor_id === sid)?.label ?? sid;
+      anomalies.push({ sid, label, todAvg, yestAvg, ratio });
+    }
+  });
+
+  panel.innerHTML = "";
+  if (anomalies.length === 0) {
+    panel.innerHTML = `<div class="text-sm text-green-600 px-3 py-2 border border-green-300 rounded bg-green-50">
+      All sensors normal — no sensor is drawing 2× or more than yesterday.
+    </div>`;
+    return;
+  }
+
+  anomalies.sort((a, b) => b.ratio - a.ratio).forEach(a => {
+    const div = document.createElement("div");
+    div.className = "flex items-start gap-3 px-3 py-2 border border-red-300 rounded bg-red-50 text-sm";
+    div.innerHTML = `
+      <span class="text-red-500 text-lg leading-none">&#9888;</span>
+      <div>
+        <span class="font-semibold text-red-700">${a.sid}: ${a.label}</span>
+        <span class="ml-2 text-red-600">${a.ratio.toFixed(1)}× yesterday</span>
+        <div class="text-xs text-red-500 mt-0.5">
+          Today avg: ${a.todAvg.toFixed(2)} µA &nbsp;|&nbsp; Yesterday avg: ${a.yestAvg.toFixed(2)} µA
+        </div>
+      </div>
+    `;
+    panel.appendChild(div);
   });
 }
 
