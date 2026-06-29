@@ -2,27 +2,16 @@
 const REPO_OWNER = "SuyogTamrakar";
 const REPO_NAME  = "power-monitor-apollo-fleet";
 const API_BASE   = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
+const RAW_BASE   = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main`;
 
-// Fetch the latest commit SHA so raw file URLs are always fresh (CDN caches by SHA, not branch name)
-let _shaCache = { sha: "main", expires: 0 };
-async function getLatestSHA() {
-  if (Date.now() < _shaCache.expires) return _shaCache.sha;
-  try {
-    const res = await fetch(`${API_BASE}/commits/main`, {
-      headers: { Accept: "application/vnd.github.v3+json" },
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const data = await res.json();
-      _shaCache = { sha: data.sha, expires: Date.now() + 4 * 60 * 1000 }; // cache 4 min
-    }
-  } catch (_) {}
-  return _shaCache.sha;
-}
-
-async function rawBase() {
-  const sha = await getLatestSHA();
-  return `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${sha}`;
+// Fetch a file fresh via the GitHub Contents API (bypasses CDN cache).
+// Falls back to raw CDN for non-current-day files (they don't change after midnight).
+async function fetchFresh(path) {
+  const res = await fetch(`${API_BASE}/contents/${path}?ref=main&_t=${Date.now()}`, {
+    headers: { Accept: "application/vnd.github.v3.raw" },
+    cache: "no-store",
+  });
+  return res.ok ? res : null;
 }
 
 // ---- State ---------------------------------------------------------------
@@ -54,9 +43,11 @@ function dateRange(startStr, endStr) {
   return dates;
 }
 
-async function fetchCSV(url) {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return null;
+async function fetchCSV(url, fresh = false) {
+  const res = fresh
+    ? await fetchFresh(url)                                        // GitHub Contents API — always current
+    : await fetch(`${RAW_BASE}/${url}`, { cache: "no-store" });   // raw CDN — ok for old dates
+  if (!res || !res.ok) return null;
   const text = await res.text();
   // Stream-parse line by line to avoid stack overflow on huge files,
   // then immediately bucket into hourly/minute averages before returning.
@@ -148,7 +139,8 @@ async function loadData() {
   allData = [];
 
   try {
-    const base = await rawBase();
+    const todayStr     = isoDate(new Date());
+    const yesterdayStr = isoDate(new Date(Date.now() - 86400000));
 
     // For sub-day quick ranges, only fetch the CSVs we actually need.
     let dates = dateRange(start, end);
@@ -158,23 +150,21 @@ async function loadData() {
       dates = [...new Set([isoDate(cutoff), isoDate(now)])];
     }
 
+    // Today's CSV: use GitHub Contents API (always fresh).
+    // Older dates: use raw CDN (they don't change after midnight).
     const results = await Promise.allSettled(
-      dates.map(d => fetchCSV(`${base}/logs/${d}.csv`))
+      dates.map(d => fetchCSV(`logs/${d}.csv`, d === todayStr))
     );
     results.forEach(r => { if (r.status === "fulfilled" && r.value) allData = allData.concat(r.value); });
-    console.log(`[INA228] SHA=${_shaCache.sha.slice(0,7)} allData=${allData.length} rows, newest ts=${allData.length ? allData[allData.length-1].timestamp : 'none'}, cutoff=${new Date(Date.now()-activeRangeMs).toISOString()}`);
 
-    // Fetch yesterday separately for anomaly detection (don't let it block or pollute main data)
-    const todayStr     = isoDate(new Date());
-    const yesterdayStr = isoDate(new Date(Date.now() - 86400000));
-    const anomalyDates = [yesterdayStr, todayStr].filter(d => !dates.includes(d));
+    // Fetch yesterday for anomaly detection if not already loaded
     let anomalyRows = [];
-    for (const d of anomalyDates) {
-      const r = await fetchCSV(`${base}/logs/${d}.csv`);
+    if (!dates.includes(yesterdayStr)) {
+      const r = await fetchCSV(`logs/${yesterdayStr}.csv`, false);
       if (r) anomalyRows = anomalyRows.concat(r);
     }
 
-    const alertRes = await fetchCSV(`${base}/logs/alerts.csv`);
+    const alertRes = await fetchCSV(`logs/alerts.csv`, true);
     alertData = alertRes || [];
 
     const visible = filterByRange(allData);
