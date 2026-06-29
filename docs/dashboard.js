@@ -318,8 +318,20 @@ function plotLayout(title, yLabel) {
 }
 
 function renderCharts(rows) {
-  Plotly.react("chartCurrent", sensorTraces(rows, "current_uA"), plotLayout("Current (µA)", "µA"),  { responsive: true });
-  Plotly.react("chartVoltage",  sensorTraces(rows, "voltage_V"),  plotLayout("Voltage (V)", "V"),    { responsive: true });
+  const noData = rows.length === 0;
+  const placeholder = noData
+    ? [{ x: [], y: [], type: "scatter", mode: "lines", name: "No data in range" }]
+    : null;
+  const currentLayout = plotLayout("Current (µA)", "µA");
+  const voltageLayout  = plotLayout("Voltage (V)",  "V");
+  if (noData) {
+    currentLayout.annotations = [{ text: "No data in selected range", xref: "paper", yref: "paper", x: 0.5, y: 0.5, showarrow: false, font: { size: 16, color: "#aaa" } }];
+    voltageLayout.annotations  = [{ text: "No data in selected range", xref: "paper", yref: "paper", x: 0.5, y: 0.5, showarrow: false, font: { size: 16, color: "#aaa" } }];
+    currentLayout.xaxis.visible = false;
+    voltageLayout.xaxis.visible  = false;
+  }
+  Plotly.react("chartCurrent", placeholder || sensorTraces(rows, "current_uA"), currentLayout, { responsive: true });
+  Plotly.react("chartVoltage",  placeholder || sensorTraces(rows, "voltage_V"),  voltageLayout,  { responsive: true });
 }
 
 // ---- Stats panel ---------------------------------------------------------
