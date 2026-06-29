@@ -152,7 +152,8 @@ function bucketSizeMs() {
   if (activeRangeMs <= 4*60*60*1000) return 60 * 1000;        // 4 hours: 1 min buckets
   if (activeRangeMs <= 24*60*60*1000) return 5 * 60 * 1000;   // 24 hours: 5 min buckets
   if (activeRangeMs <= 7*24*60*60*1000) return 60*60*1000;    // 7 days: 1 hour buckets
-  return 60 * 60 * 1000;                                       // 1 month: 1 hour buckets
+  if (activeRangeMs <= 90*24*60*60*1000)  return 60*60*1000;   // 3 months: 1 hour buckets
+  return 4 * 60 * 60 * 1000;                                   // 6 months: 4 hour buckets
 }
 
 function timeBucket(rows, field) {
