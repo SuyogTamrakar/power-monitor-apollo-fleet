@@ -30,6 +30,30 @@ def read_last_rows(path, n=10):
     return rows[-n:]
 
 
+def read_last_hours(log_dir, hours=5):
+    """Return all valid rows from the last N hours across today and yesterday's CSVs."""
+    cutoff = datetime.now(timezone.utc).timestamp() - hours * 3600
+    rows = []
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    from datetime import timedelta
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    for date in [yesterday, today]:
+        path = os.path.join(log_dir, f"{date}.csv")
+        if not os.path.exists(path):
+            continue
+        with open(path, newline="") as f:
+            for row in csv.DictReader(f):
+                if row.get("valid") != "1":
+                    continue
+                try:
+                    ts = datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00"))
+                    if ts.timestamp() >= cutoff:
+                        rows.append(row)
+                except Exception:
+                    continue
+    return rows
+
+
 def format_age(ts_str):
     """Return human-readable age of a timestamp string."""
     try:
@@ -57,6 +81,7 @@ def run():
             sensors    = [s for s in cfg["sensors"] if s.get("enabled")]
             csv_path   = latest_csv(log_dir)
             last_rows  = read_last_rows(csv_path, n=len(sensors) * 2)
+            recent_rows = read_last_hours(log_dir, hours=5)
             alerts_csv = os.path.join(log_dir, "alerts.csv")
 
             # Latest reading per sensor
@@ -105,6 +130,23 @@ def run():
                     print(f"    {sid:<4}  {s['label']:<12}  {v:>10}V  {i:>10} µA  {valid:>5}  {age:>8}")
                 else:
                     print(f"    {sid:<4}  {s['label']:<12}  {'no data yet':>32}")
+
+            # ── 5-hour averages ─────────────────────────────────────────
+            print(f"\n  Last 5-Hour Averages")
+            print(f"    {'ID':<4}  {'Label':<12}  {'Avg Current':>12}  {'Min':>10}  {'Max':>10}  {'Samples':>8}")
+            print(f"    {'-'*4}  {'-'*12}  {'-'*12}  {'-'*10}  {'-'*10}  {'-'*8}")
+            by_sensor: dict[str, list] = {}
+            for row in recent_rows:
+                by_sensor.setdefault(row["sensor_id"], []).append(float(row["current_uA"]))
+            for s in sorted(sensors, key=lambda x: x["id"]):
+                sid = str(s["id"])
+                vals = by_sensor.get(sid, [])
+                if vals:
+                    avg = sum(vals) / len(vals)
+                    print(f"    {sid:<4}  {s['label']:<12}  {avg:>10.2f} µA  "
+                          f"{min(vals):>8.2f} µA  {max(vals):>8.2f} µA  {len(vals):>8,}")
+                else:
+                    print(f"    {sid:<4}  {s['label']:<12}  {'no data':>12}")
 
             # ── Alerts ──────────────────────────────────────────────────
             print(f"\n  Alerts")
