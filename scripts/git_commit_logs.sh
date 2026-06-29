@@ -8,4 +8,5 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 git add logs/
 git diff --cached --quiet && echo "Nothing to commit." && exit 0
 git commit -m "data: auto-log update ${TIMESTAMP}"
+git pull --rebase origin main
 git push origin HEAD
