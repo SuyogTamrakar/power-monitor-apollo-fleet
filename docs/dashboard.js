@@ -14,6 +14,16 @@ let activeRangeMs = null; // null = custom date range
 function isoDate(d)  { return d.toISOString().slice(0, 10); }
 function nowMs()     { return Date.now(); }
 
+// Convert a UTC ISO string to a local-time ISO string (no Z suffix) for Plotly display.
+// Plotly treats date strings without Z as-is, so this shifts the axis to local time.
+function toLocalISO(utcStr) {
+  const d = new Date(utcStr);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+}
+
+// Short timezone label for axis titles, e.g. "PDT" or "PST"
+const TZ_LABEL = new Date().toLocaleTimeString("en-us", { timeZoneName: "short" }).split(" ").pop();
+
 function dateRange(startStr, endStr) {
   const dates = [];
   const cur = new Date(startStr + "T00:00:00Z");
@@ -236,18 +246,20 @@ function timeBucket(rows, field) {
 }
 
 function sensorTraces(rows, field) {
-  // Data is already bucketed by fetchCSV — just group by sensor and sort
+  // Data is already bucketed by fetchCSV — group by sensor, sort, convert to local time for display
   const byId = {};
   rows.forEach(r => {
     if (!selectedSensors.has(r.sensor_id)) return;
-    if (!byId[r.sensor_id]) byId[r.sensor_id] = { x: [], y: [], name: `${r.sensor_id}: ${r.label}`, mode: "lines", type: "scatter" };
-    byId[r.sensor_id].x.push(r.timestamp);
-    byId[r.sensor_id].y.push(parseFloat(r[field]));
+    if (!byId[r.sensor_id]) byId[r.sensor_id] = { pts: [], name: `${r.sensor_id}: ${r.label}` };
+    byId[r.sensor_id].pts.push({ x: r.timestamp, y: parseFloat(r[field]) });
   });
-  // Sort each trace by time
   return Object.values(byId).map(t => {
-    const pts = t.x.map((x, i) => ({ x, y: t.y[i] })).sort((a, b) => a.x.localeCompare(b.x));
-    return { x: pts.map(p => p.x), y: pts.map(p => p.y), name: t.name, mode: "lines", type: "scatter" };
+    t.pts.sort((a, b) => a.x.localeCompare(b.x));
+    return {
+      x: t.pts.map(p => toLocalISO(p.x)),
+      y: t.pts.map(p => p.y),
+      name: t.name, mode: "lines", type: "scatter",
+    };
   });
 }
 
@@ -266,16 +278,16 @@ function xAxisConfig() {
   // Choose tick format and spacing to match the active range
   const ms = activeRangeMs;
   if (!ms || ms <= 60*60*1000)          // ≤1 h  → HH:MM:SS
-    return { tickformat: "%H:%M:%S",   dtick: ms ? ms / 6 : 10*60*1000, title: "Time (UTC)" };
+    return { tickformat: "%H:%M:%S",   dtick: ms ? ms / 6 : 10*60*1000, title: `Time (${TZ_LABEL})` };
   if (ms <= 4*60*60*1000)               // ≤4 h  → HH:MM
-    return { tickformat: "%H:%M",      dtick: 30*60*1000,               title: "Time (UTC)" };
-  if (ms <= 24*60*60*1000)              // ≤24 h → HH:MM with date on first tick
-    return { tickformat: "%b %d  %H:%M", dtick: 2*60*60*1000,          title: "Date / Time (UTC)" };
-  if (ms <= 7*24*60*60*1000)            // ≤7 d  → Mon 23
-    return { tickformat: "%a %b %d",   dtick: 24*60*60*1000,           title: "Date (UTC)" };
+    return { tickformat: "%H:%M",      dtick: 30*60*1000,               title: `Time (${TZ_LABEL})` };
+  if (ms <= 24*60*60*1000)              // ≤24 h → HH:MM with date
+    return { tickformat: "%b %d  %H:%M", dtick: 2*60*60*1000,          title: `Date / Time (${TZ_LABEL})` };
+  if (ms <= 7*24*60*60*1000)            // ≤7 d  → Mon Jun 29
+    return { tickformat: "%a %b %d",   dtick: 24*60*60*1000,           title: "Date" };
   if (ms <= 90*24*60*60*1000)           // ≤3 mo → Jun 01
-    return { tickformat: "%b %d",      dtick: 7*24*60*60*1000,         title: "Date (UTC)" };
-  return   { tickformat: "%b %Y",      dtick: 30*24*60*60*1000,        title: "Month (UTC)" };
+    return { tickformat: "%b %d",      dtick: 7*24*60*60*1000,         title: "Date" };
+  return   { tickformat: "%b %Y",      dtick: 30*24*60*60*1000,        title: "Month" };
 }
 
 function plotLayout(title, yLabel) {
