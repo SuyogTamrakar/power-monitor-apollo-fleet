@@ -1,7 +1,29 @@
 // INA228 Dashboard
 const REPO_OWNER = "SuyogTamrakar";
 const REPO_NAME  = "power-monitor-apollo-fleet";
-const RAW_BASE   = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main`;
+const API_BASE   = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
+
+// Fetch the latest commit SHA so raw file URLs are always fresh (CDN caches by SHA, not branch name)
+let _shaCache = { sha: "main", expires: 0 };
+async function getLatestSHA() {
+  if (Date.now() < _shaCache.expires) return _shaCache.sha;
+  try {
+    const res = await fetch(`${API_BASE}/commits/main`, {
+      headers: { Accept: "application/vnd.github.v3+json" },
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = await res.json();
+      _shaCache = { sha: data.sha, expires: Date.now() + 4 * 60 * 1000 }; // cache 4 min
+    }
+  } catch (_) {}
+  return _shaCache.sha;
+}
+
+async function rawBase() {
+  const sha = await getLatestSHA();
+  return `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${sha}`;
+}
 
 // ---- State ---------------------------------------------------------------
 let allData       = [];   // flat array of all loaded CSV rows (full days)
@@ -33,9 +55,7 @@ function dateRange(startStr, endStr) {
 }
 
 async function fetchCSV(url) {
-  // Append timestamp to bust GitHub's raw CDN cache
-  const bustUrl = `${url}?t=${Math.floor(Date.now() / 60000)}`; // changes every minute
-  const res = await fetch(bustUrl, { cache: "no-store" });
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return null;
   const text = await res.text();
   // Stream-parse line by line to avoid stack overflow on huge files,
@@ -128,6 +148,8 @@ async function loadData() {
   allData = [];
 
   try {
+    const base = await rawBase();
+
     // For sub-day quick ranges, only fetch the CSVs we actually need.
     let dates = dateRange(start, end);
     if (activeRangeMs && activeRangeMs < 24*60*60*1000) {
@@ -137,7 +159,7 @@ async function loadData() {
     }
 
     const results = await Promise.allSettled(
-      dates.map(d => fetchCSV(`${RAW_BASE}/logs/${d}.csv`))
+      dates.map(d => fetchCSV(`${base}/logs/${d}.csv`))
     );
     results.forEach(r => { if (r.status === "fulfilled" && r.value) allData = allData.concat(r.value); });
 
@@ -147,11 +169,11 @@ async function loadData() {
     const anomalyDates = [yesterdayStr, todayStr].filter(d => !dates.includes(d));
     let anomalyRows = [];
     for (const d of anomalyDates) {
-      const r = await fetchCSV(`${RAW_BASE}/logs/${d}.csv`);
+      const r = await fetchCSV(`${base}/logs/${d}.csv`);
       if (r) anomalyRows = anomalyRows.concat(r);
     }
 
-    const alertRes = await fetchCSV(`${RAW_BASE}/logs/alerts.csv`);
+    const alertRes = await fetchCSV(`${base}/logs/alerts.csv`);
     alertData = alertRes || [];
 
     const visible = filterByRange(allData);
