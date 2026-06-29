@@ -63,25 +63,37 @@ async function loadData() {
   document.getElementById("status").textContent = "Loading…";
   allData = [];
 
-  const dates   = dateRange(start, end);
-  const results = await Promise.allSettled(
-    dates.map(d => fetchCSV(`${RAW_BASE}/logs/${d}.csv`))
-  );
-  results.forEach(r => { if (r.status === "fulfilled" && r.value) allData.push(...r.value); });
+  try {
+    // For sub-day quick ranges, only fetch the CSVs we actually need
+    let dates = dateRange(start, end);
+    if (activeRangeMs && activeRangeMs < 24*60*60*1000) {
+      // Only need today (and yesterday if we're close to midnight)
+      const now = new Date();
+      const cutoff = new Date(now.getTime() - activeRangeMs);
+      dates = [...new Set([isoDate(cutoff), isoDate(now)])];
+    }
 
-  const alertRes = await fetchCSV(`${RAW_BASE}/logs/alerts.csv`);
-  alertData = alertRes || [];
+    const results = await Promise.allSettled(
+      dates.map(d => fetchCSV(`${RAW_BASE}/logs/${d}.csv`))
+    );
+    results.forEach(r => { if (r.status === "fulfilled" && r.value) allData.push(...r.value); });
 
-  const visible = filterByRange(allData);
-  document.getElementById("status").textContent =
-    `Loaded ${visible.length} rows across ${dates.length} day(s).`;
-  document.getElementById("lastRefresh").textContent =
-    `Last updated: ${new Date().toLocaleTimeString()}`;
+    const alertRes = await fetchCSV(`${RAW_BASE}/logs/alerts.csv`);
+    alertData = alertRes || [];
 
-  buildSensorList(visible);
-  renderCharts(visible);
-  renderStats(visible);
-  renderAlertTable(visible);
+    const visible = filterByRange(allData);
+    document.getElementById("status").textContent =
+      `${visible.length} rows loaded`;
+    document.getElementById("lastRefresh").textContent =
+      `Last updated: ${new Date().toLocaleTimeString()}`;
+
+    buildSensorList(visible);
+    renderCharts(visible);
+    renderStats(visible);
+    renderAlertTable(visible);
+  } catch (err) {
+    document.getElementById("status").textContent = `Error: ${err.message}`;
+  }
 }
 
 // ---- Sensor selector -----------------------------------------------------
