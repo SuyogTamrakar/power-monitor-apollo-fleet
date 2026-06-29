@@ -289,7 +289,12 @@ def main():
             if git_interval > 0:
                 elapsed_git = time.monotonic() - last_git_commit
                 if elapsed_git >= git_interval:
+                    csv_file.flush()
+                    csv_file.close()
                     _git_commit(cfg)
+                    # git merge can replace the file on disk (new inode); reopen so
+                    # subsequent writes go to the tracked file, not a ghost inode.
+                    csv_file, csv_writer = _open_csv(_csv_path(log_dir, today))
                     last_git_commit = time.monotonic()
 
             loop_errors = 0
