@@ -22,7 +22,9 @@ function dateRange(startStr, endStr) {
   return dates;
 }
 
-const MAX_ROWS_PER_FILE = 20000;
+// For long ranges we only need hourly buckets — limit rows per file accordingly
+// 8 sensors × 12 rows/min × 60 min = ~5760 rows/hour. 50k covers ~8h per file.
+const MAX_ROWS_PER_FILE = 50000;
 
 async function fetchCSV(url) {
   const res = await fetch(url);
@@ -142,25 +144,48 @@ function selectAllSensors(on) {
 }
 
 // ---- Chart rendering -----------------------------------------------------
-const MAX_PLOT_POINTS = 1000; // max points per sensor trace
+// Bucket size in ms based on selected range — keeps chart readable
+function bucketSizeMs() {
+  if (!activeRangeMs)               return 60 * 1000;         // custom: 1 min buckets
+  if (activeRangeMs <= 30*60*1000)  return 5  * 1000;         // 30 min: 5s buckets (raw-ish)
+  if (activeRangeMs <= 60*60*1000)  return 15 * 1000;         // 1 hour: 15s buckets
+  if (activeRangeMs <= 4*60*60*1000) return 60 * 1000;        // 4 hours: 1 min buckets
+  if (activeRangeMs <= 24*60*60*1000) return 5 * 60 * 1000;   // 24 hours: 5 min buckets
+  if (activeRangeMs <= 7*24*60*60*1000) return 60*60*1000;    // 7 days: 1 hour buckets
+  return 60 * 60 * 1000;                                       // 1 month: 1 hour buckets
+}
 
-function downsample(arr, maxPoints) {
-  if (arr.length <= maxPoints) return arr;
-  const step = Math.ceil(arr.length / maxPoints);
-  return arr.filter((_, i) => i % step === 0);
+function timeBucket(rows, field) {
+  const bSize = bucketSizeMs();
+  const byId  = {};
+
+  rows.forEach(r => {
+    if (!selectedSensors.has(r.sensor_id)) return;
+    const val = parseFloat(r[field]);
+    if (isNaN(val)) return;
+    const ts     = new Date(r.timestamp).getTime();
+    const bucket = Math.floor(ts / bSize) * bSize;
+    const key    = `${r.sensor_id}__${bucket}`;
+    if (!byId[key]) byId[key] = { sid: r.sensor_id, label: r.label, bucket, sum: 0, count: 0 };
+    byId[key].sum   += val;
+    byId[key].count += 1;
+  });
+
+  // Group buckets by sensor
+  const bySensor = {};
+  Object.values(byId).forEach(b => {
+    if (!bySensor[b.sid]) bySensor[b.sid] = { name: `${b.sid}: ${b.label}`, pts: [] };
+    bySensor[b.sid].pts.push({ x: new Date(b.bucket).toISOString(), y: b.sum / b.count });
+  });
+
+  return Object.values(bySensor).map(s => {
+    s.pts.sort((a, b) => a.x.localeCompare(b.x));
+    return { x: s.pts.map(p => p.x), y: s.pts.map(p => p.y), name: s.name, mode: "lines", type: "scatter" };
+  });
 }
 
 function sensorTraces(rows, field) {
-  const byId = {};
-  rows.forEach(r => {
-    if (!selectedSensors.has(r.sensor_id)) return;
-    if (!byId[r.sensor_id]) byId[r.sensor_id] = { pts: [], name: `${r.sensor_id}: ${r.label}`, mode: "lines", type: "scatter" };
-    byId[r.sensor_id].pts.push({ x: r.timestamp, y: parseFloat(r[field]) });
-  });
-  return Object.values(byId).map(t => {
-    const pts = downsample(t.pts, MAX_PLOT_POINTS);
-    return { x: pts.map(p => p.x), y: pts.map(p => p.y), name: t.name, mode: "lines", type: "scatter" };
-  });
+  return timeBucket(rows, field);
 }
 
 function alertShapes(rows) {
