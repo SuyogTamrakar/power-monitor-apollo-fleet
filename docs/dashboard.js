@@ -162,6 +162,7 @@ async function loadData() {
       dates.map(d => fetchCSV(`${base}/logs/${d}.csv`))
     );
     results.forEach(r => { if (r.status === "fulfilled" && r.value) allData = allData.concat(r.value); });
+    console.log(`[INA228] SHA=${_shaCache.sha.slice(0,7)} allData=${allData.length} rows, newest ts=${allData.length ? allData[allData.length-1].timestamp : 'none'}, cutoff=${new Date(Date.now()-activeRangeMs).toISOString()}`);
 
     // Fetch yesterday separately for anomaly detection (don't let it block or pollute main data)
     const todayStr     = isoDate(new Date());
