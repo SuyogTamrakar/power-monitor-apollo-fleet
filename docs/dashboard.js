@@ -33,7 +33,9 @@ function dateRange(startStr, endStr) {
 }
 
 async function fetchCSV(url) {
-  const res = await fetch(url);
+  // Append timestamp to bust GitHub's raw CDN cache
+  const bustUrl = `${url}?t=${Math.floor(Date.now() / 60000)}`; // changes every minute
+  const res = await fetch(bustUrl, { cache: "no-store" });
   if (!res.ok) return null;
   const text = await res.text();
   // Stream-parse line by line to avoid stack overflow on huge files,
