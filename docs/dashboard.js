@@ -129,7 +129,7 @@ async function loadData() {
     const results = await Promise.allSettled(
       dates.map(d => fetchCSV(`${RAW_BASE}/logs/${d}.csv`))
     );
-    results.forEach(r => { if (r.status === "fulfilled" && r.value) allData.push(...r.value); });
+    results.forEach(r => { if (r.status === "fulfilled" && r.value) allData = allData.concat(r.value); });
 
     const alertRes = await fetchCSV(`${RAW_BASE}/logs/alerts.csv`);
     alertData = alertRes || [];
