@@ -254,17 +254,49 @@ function alertShapes(rows) {
     }));
 }
 
+function xAxisConfig() {
+  // Choose tick format and spacing to match the active range
+  const ms = activeRangeMs;
+  if (!ms || ms <= 60*60*1000)          // ≤1 h  → HH:MM:SS
+    return { tickformat: "%H:%M:%S",   dtick: ms ? ms / 6 : 10*60*1000, title: "Time (UTC)" };
+  if (ms <= 4*60*60*1000)               // ≤4 h  → HH:MM
+    return { tickformat: "%H:%M",      dtick: 30*60*1000,               title: "Time (UTC)" };
+  if (ms <= 24*60*60*1000)              // ≤24 h → HH:MM with date on first tick
+    return { tickformat: "%b %d  %H:%M", dtick: 2*60*60*1000,          title: "Date / Time (UTC)" };
+  if (ms <= 7*24*60*60*1000)            // ≤7 d  → Mon 23
+    return { tickformat: "%a %b %d",   dtick: 24*60*60*1000,           title: "Date (UTC)" };
+  if (ms <= 90*24*60*60*1000)           // ≤3 mo → Jun 01
+    return { tickformat: "%b %d",      dtick: 7*24*60*60*1000,         title: "Date (UTC)" };
+  return   { tickformat: "%b %Y",      dtick: 30*24*60*60*1000,        title: "Month (UTC)" };
+}
+
 function plotLayout(title, yLabel) {
-  const bg = darkMode ? "#1e1e1e" : "#ffffff";
-  const fg = darkMode ? "#e0e0e0" : "#333333";
+  const bg  = darkMode ? "#1e1e1e" : "#ffffff";
+  const fg  = darkMode ? "#e0e0e0" : "#333333";
+  const xax = xAxisConfig();
   return {
-    title, paper_bgcolor: bg, plot_bgcolor: bg,
+    title,
+    paper_bgcolor: bg, plot_bgcolor: bg,
     font: { color: fg },
-    xaxis: { title: "Timestamp", type: "date" },
-    yaxis: { title: yLabel },
-    legend: { orientation: "h", y: -0.2 },
-    margin: { l: 60, r: 20, t: 40, b: 80 },
+    xaxis: {
+      type: "date",
+      title: xax.title,
+      tickformat: xax.tickformat,
+      dtick: xax.dtick,
+      tickangle: -35,
+      tickfont: { size: 11 },
+      gridcolor: darkMode ? "#333" : "#e5e7eb",
+      showgrid: true,
+    },
+    yaxis: {
+      title: yLabel,
+      gridcolor: darkMode ? "#333" : "#e5e7eb",
+      showgrid: true,
+    },
+    legend: { orientation: "h", y: -0.28 },
+    margin: { l: 65, r: 20, t: 40, b: 100 },
     autosize: true,
+    hovermode: "x unified",
   };
 }
 
