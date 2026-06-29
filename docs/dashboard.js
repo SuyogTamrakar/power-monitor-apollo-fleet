@@ -22,11 +22,21 @@ function dateRange(startStr, endStr) {
   return dates;
 }
 
+const MAX_ROWS_PER_FILE = 20000;
+
 async function fetchCSV(url) {
   const res = await fetch(url);
   if (!res.ok) return null;
   const text = await res.text();
-  return Papa.parse(text, { header: true, skipEmptyLines: true }).data;
+  const lines = text.split('\n').filter(l => l.trim());
+  // Keep header + last MAX_ROWS_PER_FILE data lines to avoid stack overflow on huge files
+  let trimmed;
+  if (lines.length > MAX_ROWS_PER_FILE + 1) {
+    trimmed = [lines[0], ...lines.slice(-MAX_ROWS_PER_FILE)].join('\n');
+  } else {
+    trimmed = lines.join('\n');
+  }
+  return Papa.parse(trimmed, { header: true, skipEmptyLines: true }).data;
 }
 
 // ---- Range buttons -------------------------------------------------------
