@@ -120,15 +120,25 @@ function selectAllSensors(on) {
 }
 
 // ---- Chart rendering -----------------------------------------------------
+const MAX_PLOT_POINTS = 1000; // max points per sensor trace
+
+function downsample(arr, maxPoints) {
+  if (arr.length <= maxPoints) return arr;
+  const step = Math.ceil(arr.length / maxPoints);
+  return arr.filter((_, i) => i % step === 0);
+}
+
 function sensorTraces(rows, field) {
   const byId = {};
   rows.forEach(r => {
     if (!selectedSensors.has(r.sensor_id)) return;
-    if (!byId[r.sensor_id]) byId[r.sensor_id] = { x: [], y: [], name: `${r.sensor_id}: ${r.label}`, mode: "lines", type: "scatter" };
-    byId[r.sensor_id].x.push(r.timestamp);
-    byId[r.sensor_id].y.push(parseFloat(r[field]));
+    if (!byId[r.sensor_id]) byId[r.sensor_id] = { pts: [], name: `${r.sensor_id}: ${r.label}`, mode: "lines", type: "scatter" };
+    byId[r.sensor_id].pts.push({ x: r.timestamp, y: parseFloat(r[field]) });
   });
-  return Object.values(byId);
+  return Object.values(byId).map(t => {
+    const pts = downsample(t.pts, MAX_PLOT_POINTS);
+    return { x: pts.map(p => p.x), y: pts.map(p => p.y), name: t.name, mode: "lines", type: "scatter" };
+  });
 }
 
 function alertShapes(rows) {
@@ -254,10 +264,10 @@ function scheduleRefresh() {
   const start = new Date(end.getTime() - 60*60*1000);
   document.getElementById("startDate").value = isoDate(start);
   document.getElementById("endDate").value   = isoDate(end);
-  activeRangeMs = 60*60*1000;
+  activeRangeMs = 30*60*1000;
   window.addEventListener("load", () => {
     const btns = document.querySelectorAll(".range-btn");
-    if (btns[1]) btns[1].classList.add("active");
+    if (btns[0]) btns[0].classList.add("active");
     loadData().then(scheduleRefresh);
   });
 })();

@@ -1,4 +1,4 @@
-sampling_interval_s: 1      # write one averaged row per sensor every N seconds
+sampling_interval_s: 5      # write one averaged row per sensor every N seconds
 sub_sample_ms: 5            # take a raw reading every N ms — 5ms is the practical floor at 100kHz I2C with 1 sensor
 avg_window_samples: 150     # rolling average window — 150 samples × 5ms = 750ms smoothing window
 shunt_ohms: 0.015
