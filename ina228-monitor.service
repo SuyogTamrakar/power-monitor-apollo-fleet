@@ -5,9 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/ina228-monitor
-ExecStart=/usr/bin/python3 /home/pi/ina228-monitor/monitor.py
+User=yog
+WorkingDirectory=/home/yog/Projects/power-monitor-apollo-fleet
+ExecStart=/home/yog/Projects/power-monitor-apollo-fleet/.venv/bin/python3 /home/yog/Projects/power-monitor-apollo-fleet/monitor.py
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
