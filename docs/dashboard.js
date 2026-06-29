@@ -117,19 +117,27 @@ async function loadData() {
 
   try {
     // For sub-day quick ranges, only fetch the CSVs we actually need.
-    // Always include yesterday so anomaly detection has a baseline.
     let dates = dateRange(start, end);
     if (activeRangeMs && activeRangeMs < 24*60*60*1000) {
       const now = new Date();
       const cutoff = new Date(now.getTime() - activeRangeMs);
-      const yesterdayStr = isoDate(new Date(Date.now() - 86400000));
-      dates = [...new Set([yesterdayStr, isoDate(cutoff), isoDate(now)])];
+      dates = [...new Set([isoDate(cutoff), isoDate(now)])];
     }
 
     const results = await Promise.allSettled(
       dates.map(d => fetchCSV(`${RAW_BASE}/logs/${d}.csv`))
     );
     results.forEach(r => { if (r.status === "fulfilled" && r.value) allData = allData.concat(r.value); });
+
+    // Fetch yesterday separately for anomaly detection (don't let it block or pollute main data)
+    const todayStr     = isoDate(new Date());
+    const yesterdayStr = isoDate(new Date(Date.now() - 86400000));
+    const anomalyDates = [yesterdayStr, todayStr].filter(d => !dates.includes(d));
+    const anomalyRows  = [];
+    for (const d of anomalyDates) {
+      const r = await fetchCSV(`${RAW_BASE}/logs/${d}.csv`);
+      if (r) anomalyRows.push(...r);
+    }
 
     const alertRes = await fetchCSV(`${RAW_BASE}/logs/alerts.csv`);
     alertData = alertRes || [];
@@ -144,7 +152,7 @@ async function loadData() {
     renderCharts(visible);
     renderStats(visible);
     renderAlertTable(visible);
-    renderAnomalyAlerts(allData); // uses full dataset (needs today + yesterday)
+    renderAnomalyAlerts(allData.concat(anomalyRows)); // needs today + yesterday
   } catch (err) {
     document.getElementById("status").textContent = `Error: ${err.message}`;
   }
