@@ -277,19 +277,13 @@ function alertShapes(rows) {
 }
 
 function xAxisConfig() {
-  // Choose tick format and spacing to match the active range
   const ms = activeRangeMs;
-  if (!ms || ms <= 60*60*1000)          // ≤1 h  → HH:MM:SS
-    return { tickformat: "%H:%M:%S",   dtick: ms ? ms / 6 : 10*60*1000, title: `Time (${TZ_LABEL})` };
-  if (ms <= 4*60*60*1000)               // ≤4 h  → HH:MM
-    return { tickformat: "%H:%M",      dtick: 30*60*1000,               title: `Time (${TZ_LABEL})` };
-  if (ms <= 24*60*60*1000)              // ≤24 h → HH:MM with date
-    return { tickformat: "%b %d  %H:%M", dtick: 2*60*60*1000,          title: `Date / Time (${TZ_LABEL})` };
-  if (ms <= 7*24*60*60*1000)            // ≤7 d  → Mon Jun 29
-    return { tickformat: "%a %b %d",   dtick: 24*60*60*1000,           title: "Date" };
-  if (ms <= 90*24*60*60*1000)           // ≤3 mo → Jun 01
-    return { tickformat: "%b %d",      dtick: 7*24*60*60*1000,         title: "Date" };
-  return   { tickformat: "%b %Y",      dtick: 30*24*60*60*1000,        title: "Month" };
+  if (!ms || ms <= 60*60*1000)            return { tickformat: "%H:%M:%S", title: `Time (${TZ_LABEL})` };
+  if (ms <= 4*60*60*1000)                 return { tickformat: "%H:%M",    title: `Time (${TZ_LABEL})` };
+  if (ms <= 24*60*60*1000)                return { tickformat: "%b %d %H:%M", title: `Date / Time (${TZ_LABEL})` };
+  if (ms <= 7*24*60*60*1000)              return { tickformat: "%a %b %d", title: "Date" };
+  if (ms <= 90*24*60*60*1000)             return { tickformat: "%b %d",    title: "Date" };
+  return                                         { tickformat: "%b %Y",    title: "Month" };
 }
 
 function plotLayout(title, yLabel) {
@@ -302,9 +296,8 @@ function plotLayout(title, yLabel) {
     font: { color: fg },
     xaxis: {
       type: "date",
-      title: { text: xax.title, standoff: 10 },
+      title: { text: xax.title, standoff: 12 },
       tickformat: xax.tickformat,
-      dtick: xax.dtick,
       tickangle: -30,
       tickfont: { size: 11 },
       gridcolor: darkMode ? "#333" : "#e5e7eb",
