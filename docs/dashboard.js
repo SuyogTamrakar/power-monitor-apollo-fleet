@@ -22,23 +22,63 @@ function dateRange(startStr, endStr) {
   return dates;
 }
 
-// For long ranges we only need hourly buckets — limit rows per file accordingly
-// 8 sensors × 12 rows/min × 60 min = ~5760 rows/hour. 50k covers ~8h per file.
-const MAX_ROWS_PER_FILE = 50000;
-
 async function fetchCSV(url) {
   const res = await fetch(url);
   if (!res.ok) return null;
   const text = await res.text();
-  const lines = text.split('\n').filter(l => l.trim());
-  // Keep header + last MAX_ROWS_PER_FILE data lines to avoid stack overflow on huge files
-  let trimmed;
-  if (lines.length > MAX_ROWS_PER_FILE + 1) {
-    trimmed = [lines[0], ...lines.slice(-MAX_ROWS_PER_FILE)].join('\n');
-  } else {
-    trimmed = lines.join('\n');
+  // Stream-parse line by line to avoid stack overflow on huge files,
+  // then immediately bucket into hourly/minute averages before returning.
+  // This keeps memory flat regardless of file size.
+  const lines = text.split('\n');
+  if (lines.length < 2) return [];
+
+  const header = lines[0].split(',').map(h => h.trim());
+  const tsIdx  = header.indexOf('timestamp');
+  const sidIdx = header.indexOf('sensor_id');
+  const labIdx = header.indexOf('label');
+  const vIdx   = header.indexOf('voltage_V');
+  const iIdx   = header.indexOf('current_uA');
+  const valIdx = header.indexOf('valid');
+  if (tsIdx < 0 || iIdx < 0) return [];
+
+  // Pre-bucket as we parse — avoids holding all rows in memory
+  const bSize  = bucketSizeMs();
+  const buckets = {};  // key → {timestamp, sensor_id, label, vSum, iSum, count, valid}
+
+  for (let li = 1; li < lines.length; li++) {
+    const line = lines[li].trim();
+    if (!line) continue;
+    const cols = line.split(',');
+    const ts   = cols[tsIdx];
+    const sid  = cols[sidIdx];
+    const iVal = parseFloat(cols[iIdx]);
+    const vVal = parseFloat(cols[vIdx]);
+    if (!ts || !sid || isNaN(iVal)) continue;
+    const t      = new Date(ts).getTime();
+    const bucket = Math.floor(t / bSize) * bSize;
+    const key    = `${sid}__${bucket}`;
+    if (!buckets[key]) {
+      buckets[key] = {
+        timestamp: new Date(bucket).toISOString(),
+        sensor_id: sid,
+        label:     cols[labIdx] || sid,
+        voltage_V: 0, current_uA: 0, count: 0, valid: '1',
+      };
+    }
+    buckets[key].voltage_V  += isNaN(vVal) ? 0 : vVal;
+    buckets[key].current_uA += iVal;
+    buckets[key].count      += 1;
+    if (cols[valIdx] === '0') buckets[key].valid = '0';
   }
-  return Papa.parse(trimmed, { header: true, skipEmptyLines: true }).data;
+
+  return Object.values(buckets).map(b => ({
+    timestamp:  b.timestamp,
+    sensor_id:  b.sensor_id,
+    label:      b.label,
+    voltage_V:  (b.voltage_V  / b.count).toFixed(4),
+    current_uA: (b.current_uA / b.count).toFixed(2),
+    valid:      b.valid,
+  }));
 }
 
 // ---- Range buttons -------------------------------------------------------
@@ -186,7 +226,19 @@ function timeBucket(rows, field) {
 }
 
 function sensorTraces(rows, field) {
-  return timeBucket(rows, field);
+  // Data is already bucketed by fetchCSV — just group by sensor and sort
+  const byId = {};
+  rows.forEach(r => {
+    if (!selectedSensors.has(r.sensor_id)) return;
+    if (!byId[r.sensor_id]) byId[r.sensor_id] = { x: [], y: [], name: `${r.sensor_id}: ${r.label}`, mode: "lines", type: "scatter" };
+    byId[r.sensor_id].x.push(r.timestamp);
+    byId[r.sensor_id].y.push(parseFloat(r[field]));
+  });
+  // Sort each trace by time
+  return Object.values(byId).map(t => {
+    const pts = t.x.map((x, i) => ({ x, y: t.y[i] })).sort((a, b) => a.x.localeCompare(b.x));
+    return { x: pts.map(p => p.x), y: pts.map(p => p.y), name: t.name, mode: "lines", type: "scatter" };
+  });
 }
 
 function alertShapes(rows) {
