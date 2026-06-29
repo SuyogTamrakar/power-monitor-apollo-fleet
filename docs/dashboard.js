@@ -143,10 +143,10 @@ async function loadData() {
     const todayStr     = isoDate(new Date());
     const yesterdayStr = isoDate(new Date(Date.now() - 86400000));
     const anomalyDates = [yesterdayStr, todayStr].filter(d => !dates.includes(d));
-    const anomalyRows  = [];
+    let anomalyRows = [];
     for (const d of anomalyDates) {
       const r = await fetchCSV(`${RAW_BASE}/logs/${d}.csv`);
-      if (r) anomalyRows.push(...r);
+      if (r) anomalyRows = anomalyRows.concat(r);
     }
 
     const alertRes = await fetchCSV(`${RAW_BASE}/logs/alerts.csv`);
