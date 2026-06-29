@@ -4,11 +4,11 @@ const REPO_NAME  = "power-monitor-apollo-fleet";
 const API_BASE   = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
 const RAW_BASE   = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main`;
 
-// Fetch a file fresh via the GitHub Contents API (bypasses CDN cache).
-// Falls back to raw CDN for non-current-day files (they don't change after midnight).
+// Fetch a file via the raw CDN with no browser caching.
+// The CDN itself caches for ~5 min — acceptable since data is pushed every 5 min.
+// Avoids the GitHub Contents API 60-req/hour unauthenticated rate limit.
 async function fetchFresh(path) {
-  const res = await fetch(`${API_BASE}/contents/${path}?ref=main&_t=${Date.now()}`, {
-    headers: { Accept: "application/vnd.github.v3.raw" },
+  const res = await fetch(`${RAW_BASE}/${path}?_t=${Date.now()}`, {
     cache: "no-store",
   });
   return res.ok ? res : null;
@@ -478,7 +478,7 @@ function downloadCSV() {
 
 // ---- Auto-refresh --------------------------------------------------------
 let autoRefreshTimer = null;
-const AUTO_REFRESH_MS = 60 * 1000; // refresh data every 60 seconds
+const AUTO_REFRESH_MS = 310 * 1000; // refresh every 310s — matches 5-min push interval
 
 function scheduleRefresh() {
   clearTimeout(autoRefreshTimer);
