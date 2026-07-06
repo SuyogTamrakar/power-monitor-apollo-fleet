@@ -177,7 +177,8 @@ async function loadData() {
     renderCharts(visible);
     renderStats(visible);
     renderAlertTable(visible);
-    renderAnomalyAlerts(allData.concat(anomalyRows)); // needs today + yesterday
+    renderAnomalyAlerts(allData.concat(anomalyRows));
+    renderRangeStats(visible);
   } catch (err) {
     document.getElementById("status").textContent = `Error: ${err.message}`;
   }
@@ -205,6 +206,7 @@ function toggleSensor(id) {
   const visible = filterByRange(allData);
   renderCharts(visible);
   renderStats(visible);
+  renderRangeStats(visible);
 }
 
 function selectAllSensors(on) {
@@ -216,6 +218,7 @@ function selectAllSensors(on) {
   const visible = filterByRange(allData);
   renderCharts(visible);
   renderStats(visible);
+  renderRangeStats(visible);
 }
 
 // ---- Chart rendering -----------------------------------------------------
@@ -454,6 +457,133 @@ function renderAlertTable(rows) {
       <td>${r.cleared_at || "—"}</td>`;
     tbody.appendChild(tr);
   });
+}
+
+// ---- Tab switching -------------------------------------------------------
+let activeTab = "charts";
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById(`tab-${tab}`).classList.add("active");
+  document.getElementById("panel-charts").style.display     = tab === "charts"     ? "" : "none";
+  document.getElementById("panel-rangestats").style.display = tab === "rangestats" ? "" : "none";
+}
+
+// ---- Range Statistics ----------------------------------------------------
+function renderRangeStats(rows) {
+  const panel = document.getElementById("rangeStatsPanel");
+  if (!panel) return;
+
+  const start = document.getElementById("startDate").value;
+  const end   = document.getElementById("endDate").value;
+  const label = activeRangeMs
+    ? rangeLabel(activeRangeMs)
+    : `${start} → ${end}`;
+
+  // Collect raw stats per sensor from the filtered+bucketed rows
+  const byId = {};
+  rows.forEach(r => {
+    if (!selectedSensors.has(r.sensor_id)) return;
+    if (r.valid !== "1") return;
+    const i = parseFloat(r.current_uA);
+    const v = parseFloat(r.voltage_V);
+    if (isNaN(i) || isNaN(v)) return;
+    if (!byId[r.sensor_id]) {
+      byId[r.sensor_id] = {
+        label: r.label,
+        iMin: i, iMax: i, iSum: 0,
+        vMin: v, vMax: v, vSum: 0,
+        count: 0,
+      };
+    }
+    const s = byId[r.sensor_id];
+    if (i < s.iMin) s.iMin = i;
+    if (i > s.iMax) s.iMax = i;
+    if (v < s.vMin) s.vMin = v;
+    if (v > s.vMax) s.vMax = v;
+    s.iSum += i;
+    s.vSum += v;
+    s.count += 1;
+  });
+
+  const ids = Object.keys(byId).sort((a, b) => +a - +b);
+
+  if (ids.length === 0) {
+    panel.innerHTML = `<p class="text-sm text-gray-500">No valid data in the selected range.</p>`;
+    return;
+  }
+
+  const darkBg  = darkMode ? "background:#1e1e1e" : "";
+  const headBg  = darkMode ? "background:#2a2a2a" : "background:#f3f4f6";
+
+  let html = `
+    <p class="text-sm text-gray-500 mb-3">Range: <span class="font-medium">${label}</span>
+      &nbsp;·&nbsp; Samples per sensor: based on bucketed data points in range</p>
+    <div class="overflow-x-auto">
+    <table class="text-sm border-collapse w-full" style="${darkBg}">
+      <thead>
+        <tr style="${headBg}">
+          <th class="text-left">DUT</th>
+          <th class="text-left">Label</th>
+          <th colspan="4" class="text-center">Current (µA)</th>
+          <th colspan="4" class="text-center">Voltage (V)</th>
+          <th class="text-right">Samples</th>
+        </tr>
+        <tr style="${headBg}">
+          <th></th><th></th>
+          <th class="text-right">Min</th>
+          <th class="text-right">Max</th>
+          <th class="text-right">Avg</th>
+          <th class="text-right">Range</th>
+          <th class="text-right">Min</th>
+          <th class="text-right">Max</th>
+          <th class="text-right">Avg</th>
+          <th class="text-right">Range</th>
+          <th class="text-right">#</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  ids.forEach((id, idx) => {
+    const s    = byId[id];
+    const iAvg = s.iSum / s.count;
+    const vAvg = s.vSum / s.count;
+    const iRng = s.iMax - s.iMin;
+    const vRng = s.vMax - s.vMin;
+    const rowBg = darkMode
+      ? (idx % 2 === 0 ? "background:#1e1e1e" : "background:#252525")
+      : (idx % 2 === 0 ? "background:#ffffff" : "background:#f9fafb");
+    html += `
+      <tr style="${rowBg}">
+        <td class="font-mono font-semibold">${id}</td>
+        <td>${s.label}</td>
+        <td class="text-right stat-good">${s.iMin.toFixed(2)}</td>
+        <td class="text-right stat-hi">${s.iMax.toFixed(2)}</td>
+        <td class="text-right font-medium">${iAvg.toFixed(2)}</td>
+        <td class="text-right text-gray-500">${iRng.toFixed(2)}</td>
+        <td class="text-right stat-good">${s.vMin.toFixed(4)}</td>
+        <td class="text-right stat-hi">${s.vMax.toFixed(4)}</td>
+        <td class="text-right font-medium">${vAvg.toFixed(4)}</td>
+        <td class="text-right text-gray-500">${vRng.toFixed(4)}</td>
+        <td class="text-right text-gray-400">${s.count.toLocaleString()}</td>
+      </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+  panel.innerHTML = html;
+}
+
+function rangeLabel(ms) {
+  if (ms <= 30*60*1000)          return "Last 30 min";
+  if (ms <= 60*60*1000)          return "Last 1 hour";
+  if (ms <= 4*60*60*1000)        return "Last 4 hours";
+  if (ms <= 24*60*60*1000)       return "Last 24 hours";
+  if (ms <= 7*24*60*60*1000)     return "Last 7 days";
+  if (ms <= 30*24*60*60*1000)    return "Last 1 month";
+  if (ms <= 90*24*60*60*1000)    return "Last 3 months";
+  return "Last 6 months";
 }
 
 // ---- Dark mode -----------------------------------------------------------

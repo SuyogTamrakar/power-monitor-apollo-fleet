@@ -12,13 +12,24 @@
     body.dark .border { border-color:#444; }
     body.dark input { background:#2a2a2a; color:#e0e0e0; border-color:#555; }
     body.dark .bg-white { background:#2a2a2a; }
-    td, th { padding: 4px 8px; border: 1px solid #ccc; }
+    body.dark .tab-panel { background:#1e1e1e; }
+    td, th { padding: 6px 12px; border: 1px solid #ccc; }
     body.dark td, body.dark th { border-color:#555; }
+    body.dark th { background:#2a2a2a; }
     .range-btn { padding: 4px 12px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 0.8rem; cursor: pointer; transition: all 0.15s; }
     .range-btn:hover { background: #3b82f6; color: white; border-color: #3b82f6; }
     .range-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
     body.dark .range-btn { border-color:#555; color:#e0e0e0; }
     body.dark .range-btn:hover, body.dark .range-btn.active { background:#2563eb; border-color:#2563eb; }
+    .tab-btn { padding: 8px 20px; border-bottom: 3px solid transparent; font-size: 0.9rem; cursor: pointer; font-weight: 500; transition: all 0.15s; }
+    .tab-btn:hover { color: #3b82f6; }
+    .tab-btn.active { border-bottom-color: #2563eb; color: #2563eb; }
+    body.dark .tab-btn { color: #aaa; }
+    body.dark .tab-btn.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+    .stat-good { color: #16a34a; }
+    .stat-hi   { color: #dc2626; }
+    body.dark .stat-good { color: #4ade80; }
+    body.dark .stat-hi   { color: #f87171; }
   </style>
 </head>
 <body class="font-sans p-4">
@@ -70,32 +81,42 @@
     <div id="sensorList" class="flex flex-wrap gap-2"></div>
   </div>
 
-  <!-- Charts -->
-  <div id="chartCurrent" class="mb-6" style="height:420px"></div>
-  <div id="chartVoltage"  class="mb-6" style="height:320px"></div>
-
-  <!-- Stats -->
-  <h2 class="text-lg font-semibold mb-2">Statistics</h2>
-  <div id="statsPanel" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6"></div>
-
-  <!-- Day-over-day anomaly alerts -->
-  <h2 class="text-lg font-semibold mb-2">Power Anomalies <span class="text-sm font-normal text-gray-400">(today vs yesterday)</span></h2>
-  <div id="anomalyPanel" class="flex flex-col gap-2 mb-6"></div>
-
-  <!-- Alert summary -->
-  <h2 class="text-lg font-semibold mb-2">Alert Events</h2>
-  <div class="overflow-x-auto mb-6">
-    <table class="text-sm border-collapse">
-      <thead>
-        <tr>
-          <th>Timestamp</th><th>ID</th><th>Label</th>
-          <th>Avg µA</th><th>Current µA</th><th>Voltage V</th><th>Cleared At</th>
-        </tr>
-      </thead>
-      <tbody id="alertTableBody"></tbody>
-    </table>
+  <!-- Tab navigation -->
+  <div class="flex border-b mb-6">
+    <button class="tab-btn active" id="tab-charts"     onclick="switchTab('charts')">Charts</button>
+    <button class="tab-btn"        id="tab-rangestats" onclick="switchTab('rangestats')">Range Statistics</button>
   </div>
 
-  <script src="dashboard.js?v=11"></script>
+  <!-- TAB: Charts -->
+  <div id="panel-charts">
+    <div id="chartCurrent" class="mb-6" style="height:420px"></div>
+    <div id="chartVoltage"  class="mb-6" style="height:320px"></div>
+
+    <h2 class="text-lg font-semibold mb-2">Statistics</h2>
+    <div id="statsPanel" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6"></div>
+
+    <h2 class="text-lg font-semibold mb-2">Power Anomalies <span class="text-sm font-normal text-gray-400">(today vs yesterday)</span></h2>
+    <div id="anomalyPanel" class="flex flex-col gap-2 mb-6"></div>
+
+    <h2 class="text-lg font-semibold mb-2">Alert Events</h2>
+    <div class="overflow-x-auto mb-6">
+      <table class="text-sm border-collapse">
+        <thead>
+          <tr>
+            <th>Timestamp</th><th>ID</th><th>Label</th>
+            <th>Avg µA</th><th>Current µA</th><th>Voltage V</th><th>Cleared At</th>
+          </tr>
+        </thead>
+        <tbody id="alertTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TAB: Range Statistics -->
+  <div id="panel-rangestats" style="display:none">
+    <div id="rangeStatsPanel"></div>
+  </div>
+
+  <script src="dashboard.js?v=12"></script>
 </body>
 </html>
