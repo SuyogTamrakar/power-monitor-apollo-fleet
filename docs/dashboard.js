@@ -95,6 +95,7 @@ async function fetchCSV(url, fresh = false, useContentsAPI = false) {
     const vVal = parseFloat(cols[vIdx]);
     if (!ts || !sid || isNaN(iVal)) continue;
     const t      = new Date(ts).getTime();
+    if (isNaN(t)) continue;  // skip truncated/malformed rows
     const bucket = Math.floor(t / bSize) * bSize;
     const key    = `${sid}__${bucket}`;
     if (!buckets[key]) {
