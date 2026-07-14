@@ -4,14 +4,29 @@ const REPO_NAME  = "power-monitor-apollo-fleet";
 const API_BASE   = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
 const RAW_BASE   = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main`;
 
-// Fetch a file via the raw CDN with no browser caching.
-// The CDN itself caches for ~5 min — acceptable since data is pushed every 5 min.
-// Avoids the GitHub Contents API 60-req/hour unauthenticated rate limit.
-async function fetchFresh(path) {
+// Fetch via GitHub Contents API — always returns the latest committed file,
+// bypasses CDN entirely. Use only for manual user-triggered loads to avoid
+// hitting the 60 req/hr unauthenticated rate limit.
+async function fetchContentsAPI(path) {
+  const res = await fetch(`${API_BASE}/contents/${path}?ref=main`, {
+    headers: { Accept: "application/vnd.github.v3.raw" },
+    cache: "no-store",
+  });
+  return res.ok ? res : null;
+}
+
+// Fetch via raw CDN — up to ~5 min stale but no rate limit.
+// Used for auto-refresh and all non-today files.
+async function fetchRaw(path) {
   const res = await fetch(`${RAW_BASE}/${path}?_t=${Date.now()}`, {
     cache: "no-store",
   });
   return res.ok ? res : null;
+}
+
+// fetchFresh: use Contents API on manual loads, raw CDN on auto-refresh.
+async function fetchFresh(path, useContentsAPI = false) {
+  return useContentsAPI ? fetchContentsAPI(path) : fetchRaw(path);
 }
 
 // ---- State ---------------------------------------------------------------
@@ -43,10 +58,10 @@ function dateRange(startStr, endStr) {
   return dates;
 }
 
-async function fetchCSV(url, fresh = false) {
+async function fetchCSV(url, fresh = false, useContentsAPI = false) {
   const res = fresh
-    ? await fetchFresh(url)                                        // GitHub Contents API — always current
-    : await fetch(`${RAW_BASE}/${url}`, { cache: "no-store" });   // raw CDN — ok for old dates
+    ? await fetchFresh(url, useContentsAPI)   // today's file: Contents API (manual) or raw CDN (auto)
+    : await fetchRaw(url);                    // older dates: raw CDN always (they never change)
   if (!res || !res.ok) return null;
   const text = await res.text();
   // Stream-parse line by line to avoid stack overflow on huge files,
@@ -130,7 +145,7 @@ function filterByRange(rows) {
 }
 
 // ---- Data loading --------------------------------------------------------
-async function loadData() {
+async function loadData(isAutoRefresh = false) {
   const start = document.getElementById("startDate").value;
   const end   = document.getElementById("endDate").value;
   if (!start || !end) return;
@@ -152,8 +167,9 @@ async function loadData() {
 
     // Today's CSV: use GitHub Contents API (always fresh).
     // Older dates: use raw CDN (they don't change after midnight).
+    const useAPI = !isAutoRefresh;
     const results = await Promise.allSettled(
-      dates.map(d => fetchCSV(`logs/${d}.csv`, d === todayStr))
+      dates.map(d => fetchCSV(`logs/${d}.csv`, d === todayStr, useAPI))
     );
     results.forEach(r => { if (r.status === "fulfilled" && r.value) allData = allData.concat(r.value); });
 
@@ -164,7 +180,7 @@ async function loadData() {
       if (r) anomalyRows = anomalyRows.concat(r);
     }
 
-    const alertRes = await fetchCSV(`logs/alerts.csv`, true);
+    const alertRes = await fetchCSV(`logs/alerts.csv`, true, useAPI);
     alertData = alertRes || [];
 
     const visible = filterByRange(allData);
@@ -620,7 +636,7 @@ function scheduleRefresh() {
       document.getElementById("startDate").value = isoDate(start);
       document.getElementById("endDate").value   = isoDate(end);
     }
-    await loadData();
+    await loadData(true);   // auto-refresh: use raw CDN to avoid rate limit
     scheduleRefresh();
   }, AUTO_REFRESH_MS);
 }
