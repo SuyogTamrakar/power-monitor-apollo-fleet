@@ -5,14 +5,16 @@ const API_BASE   = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
 const RAW_BASE   = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main`;
 
 // Fetch via GitHub Contents API — always returns the latest committed file,
-// bypasses CDN entirely. Use only for manual user-triggered loads to avoid
-// hitting the 60 req/hr unauthenticated rate limit.
+// bypasses CDN entirely. Falls back to raw CDN if the file exceeds the
+// 1 MB Contents API limit (HTTP 403) or if rate limited.
 async function fetchContentsAPI(path) {
   const res = await fetch(`${API_BASE}/contents/${path}?ref=main`, {
     headers: { Accept: "application/vnd.github.v3.raw" },
     cache: "no-store",
   });
-  return res.ok ? res : null;
+  if (res.ok) return res;
+  // File too large (>1 MB) or rate limited — fall back to raw CDN
+  return fetchRaw(path);
 }
 
 // Fetch via raw CDN — up to ~5 min stale but no rate limit.
