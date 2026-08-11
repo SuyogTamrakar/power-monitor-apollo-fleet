@@ -1,17 +1,19 @@
 # INA228 Alert Log
-Last updated: 2026-08-11T20:25:19Z
-Total alerts (all sensors, all time): 7
+Last updated: 2026-08-11T20:35:29Z
+Total alerts (all sensors, all time): 8
 Threshold: 5000.0 µA  |  Window: 2 h  |  Cooldown: 30 min
 
 ## Sensor Summary
 | ID | Label | Alerts | Last Alert | Avg µA  | Status |
 |----|-------|--------|------------|--------|--------|
 |  1 | DUT-A1   |      1 | 2026-06-16T03:22:37Z | 5044.13 | ACTIVE |
+|  5 | DUT-A5   |      1 | 2026-08-11T20:30:46Z | 5649.57 | CLEARED |
 |  8 | DUT-A8   |      6 | 2026-06-29T19:20:55Z | 6204.96 | ACTIVE |
 
 ## Recent Alerts (last 50)
 | Timestamp | ID | Label | Avg µA | Current µA | Voltage V | Cleared At |
 |-----------|----|----|--------|-----------|----------|-----------|
+| 2026-08-11T20:30:46Z | 5 | DUT-A5 | 5649.57 | 11123.02 | 6.9609 | 2026-08-11T20:31:00Z |
 | 2026-06-29T19:20:55Z | 8 | DUT-A8 | 6204.96 | 150.86 | 6.9012 |  |
 | 2026-06-29T18:50:53Z | 8 | DUT-A8 | 12235.81 | 128.84 | 6.8106 |  |
 | 2026-06-29T18:20:46Z | 8 | DUT-A8 | 20710.98 | 20710.98 | 6.6646 |  |
