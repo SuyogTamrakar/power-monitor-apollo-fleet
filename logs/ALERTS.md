@@ -1,5 +1,5 @@
 # INA228 Alert Log
-Last updated: 2026-10-03T22:09:13Z
+Last updated: 2026-10-03T22:14:30Z
 Total alerts (all sensors, all time): 8
 Threshold: 5000.0 µA  |  Window: 2 h  |  Cooldown: 30 min
 
